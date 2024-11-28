@@ -11,8 +11,8 @@ use config::*;
 fn main() {
     /* Read Config */
     // _ = read_conf("src/config");
-    _ = read_peer("src/config_peer");
     let config = CONFIG_MAP.read().unwrap();
+    _ = read_peer("src/config_peer");
 
     Peer::print();
 
