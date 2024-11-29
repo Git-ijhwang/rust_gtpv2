@@ -1,3 +1,4 @@
 /target
 config_peer
+src/config_peer
 config

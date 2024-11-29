@@ -7,10 +7,13 @@ use std::net::Ipv4Addr;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
  
+use bytemuck::{Pod, Zeroable};
 
-const GTPV2C_PEER_MME: i16 = 1;
-const GTPV2C_PEER_SGW: i16 = 2;
-const GTPV2C_PEER_PGW: i16 = 3;
+const GTPV2C_PEER_MME: u16 = 1;
+const GTPV2C_PEER_SGW: u16 = 2;
+const GTPV2C_PEER_PGW: u16 = 3;
+
+const GTPV2_VERSION: u8 = 2;
 
 
 #[repr(C)]
@@ -38,7 +41,7 @@ impl Peer {
             ip,
             port,
             msglen: 0,
-            version: 2,
+            version: GTPV2_VERSION,
             status: 1, //defalut 1
             teid: 0,
             rseq: 0,
@@ -74,53 +77,122 @@ impl Peer {
 }
 
 
-pub struct Clients {
-    pub port:           u8,
-    pub socket:         UdpSocket,
-    pub tranxid:        [u8;4],
-    pub hostname:       String,
-    pub hw_addr:        [u8; 16],
-    pub magic_cookie:   [u8; 4],
-    pub msg_type:       u8,
-}
+
+// #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+// #[derive(Debug, Clone, Copy, Pod, Zeroable)] // bytemuck의 Pod와 Zeroable 트레잇 구현
 pub struct Gtpv2CHeader {
-    pub version_and_flags: u8,  // Version (3 bits) + P flag (1 bit) + T flag (1 bit) + 3 spare bits
-    pub message_type: u8,      // Message type (8 bits)
-    pub message_length: u16,   // Message length (16 bits)
-    pub teid: Option<u32>,     // TEID (32 bits), optional based on T flag
-    pub sequence_number: u32,  // Sequence number (24 bits) + 8 spare bits
+    pub v: u8,  // Version (3 bits) + P flag (1 bit) + T flag (1 bit) + 3 spare bits
+    pub t: u8,      // Message type (8 bits)
+    pub l: u16,   // Message length (16 bits)
+    pub teid: u32,     // TEID (32 bits), optional based on T flag
+    pub s: u16,  // Sequence number (24 bits) + 8 spare bits
+
+    pub ies: Vec<u8>,
 }
 
 impl Gtpv2CHeader {
     /// GTPv2-C 헤더를 초기화하는 함수
-    pub fn new(version: u8, p_flag: bool, t_flag: bool, message_type: u8, message_length: u16, teid: Option<u32>, sequence_number: u32) -> Self {
-        let mut version_and_flags = (version & 0b111) << 5; // Version은 상위 3비트
+    pub fn new (
+            buffer: &mut [u8],
+            p_flag: bool,
+            t_flag: bool,
+            t: u8,
+            l: u16,
+            teid: u32,
+            s: u16
+        ) {
+        let mut v = (GTPV2_VERSION & 0b111) << 5; // Version은 상위 3비트
         if p_flag {
-            version_and_flags |= 0b0001_0000; // P-flag 설정
+            v |= 0b0001_0000; // P-flag 설정
         }
         if t_flag {
-            version_and_flags |= 0b0000_1000; // T-flag 설정
+            v |= 0b0000_1000; // T-flag 설정
         }
 
-        Gtpv2CHeader {
-            version_and_flags,
-            message_type,
-            message_length,
-            teid,
-            sequence_number,
-        }
+        buffer[0] = v;
+        buffer[1] = t;
+        buffer[2..4].copy_from_slice(&l.to_be_bytes() );
+        buffer[4..8].copy_from_slice(&teid.to_be_bytes() );
+        buffer[8..10].copy_from_slice(&s.to_be_bytes() );
     }
 
     /// T-flag로 TEID의 존재 여부를 반환
     pub fn has_teid(&self) -> bool {
-        self.version_and_flags & 0b0000_1000 != 0
+        self.v & 0b0000_1000 != 0
+    }
+
+    pub fn encode_gtp_hdr<'a>(&'a self, p: &'a mut [u8]) -> &[u8] {
+        let teid_bytes: [u8; 4] = self.teid.to_be_bytes();
+
+        let l_bytes = self.l.to_be_bytes();
+        let s_bytes = self.s.to_be_bytes();
+
+        p[..10].copy_from_slice(&[
+            self.v,
+            self.t,
+            l_bytes[0],                                    // Elapsed seconds MSB
+            l_bytes[1],                                    // Elapsed seconds LSB
+            teid_bytes[0],                                     // Transaction ID MSB
+            teid_bytes[1],                                     // Transaction ID 중간 바이트
+            teid_bytes[2],                                     // Transaction ID 중간 바이트
+            teid_bytes[3],                                     // Transaction ID LSB
+            s_bytes[0],                                    // Elapsed seconds MSB
+            s_bytes[1],                                    // Elapsed seconds LSB
+        ]);
+
+        &p[..10]
     }
 
 }
 
-
-pub fn send_gtpv2() {
-    
+/* GTPv2 IE */
+pub struct gtpv2c_ie1 {
+    t:			u8,     /* type (1octet) */
+    l:			u16,    /* length (2octet) */
+    i:			u8,     /* spare (4bit) + instance  (4bit)*/
+    v:			u8,     /* value (1octet) */
 }
+
+impl gtpv2c_ie1 {
+    pub fn new(t: u8, i: u8, v: u8) -> Self {
+        gtpv2c_ie1 {
+	        t,
+	        l : u16::to_be(0x00001),
+	        i : i & 0x00ff,
+	        v,
+        }
+    }
+}
+
+
+struct gtpv2c_ie2 {
+    t:			u8, /* type (1octet) */
+    l:			u16, /* length (2octet) */
+    i:			u8, /* spare (4bit) + instance (4bit) */
+    v:			u16, /* value (2octet) */
+}
+
+struct gtpv2c_ie4 {
+    t:			u8	, /* type (1octet) */
+    l:			u16, /* length (2octet) */
+    i:			u8, /* spare (4bit) + instance (4bit) */
+    v:			u32, /* value (4octet) */
+}
+
+struct gtpv2c_ie8 {
+    t:			u8, /* type (1octet) */
+    l:			u16, /* length (2octet) */
+    i:			u8, /* spare (4bit) + instance (4bit) */
+    v:			u64, /* value (8octets) */
+}
+
+struct gtpv2c_ie_tlv {
+    t:			u8, /* type (1octet)*/
+    l:			u16, /* length (2octet) */
+    i:			u8, /* spare (4bit) + instance (4bit) */
+}
+    /* value is variable lentgh */
+
+
+
