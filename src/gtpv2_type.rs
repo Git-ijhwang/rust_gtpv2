@@ -137,15 +137,15 @@ const GTPV2C_MSG_MAX: u8 = 		                            255;
  * GTPv2-C Information Element Type Values
  * ======================================================
  */
-const GTPV2C_IE_RESERVED: u8 = 		                        0;
-const GTPV2C_IE_IMSI: u8 = 		                            1; 		/* International Mobile Subscriber Identity */
-const GTPV2C_IE_CAUSE: u8 = 		                            2;
-const GTPV2C_IE_RECOVERY: u8 = 		                        3; 		/* Restart Counter */
+pub const GTPV2C_IE_RESERVED: u8 = 		                        0;
+pub const GTPV2C_IE_IMSI: u8 = 		                            1; 		/* International Mobile Subscriber Identity */
+pub const GTPV2C_IE_CAUSE: u8 = 		                            2;
+pub const GTPV2C_IE_RECOVERY: u8 = 		                        3; 		/* Restart Counter */
  		/* Reserved for S101 interface 		4 to 50 */
-const GTPV2C_IE_STN_SR: u8 = 		                            51;
+pub const GTPV2C_IE_STN_SR: u8 = 		                            51;
  		/* Reserved for Sv interface 		52 to 70 */
-const GTPV2C_IE_APN: u8 = 		                                71; 		/* Access Point Name */
-const GTPV2C_IE_AMBR: u8 = 		                            72; 		/* Aggregate Maximum Bit Rate */
+pub const GTPV2C_IE_APN: u8 = 		                                71; 		/* Access Point Name */
+pub const GTPV2C_IE_AMBR: u8 = 		                            72; 		/* Aggregate Maximum Bit Rate */
 const GTPV2C_IE_EBI: u8 = 		                                73; 		/* EPS Bearer ID */
 const GTPV2C_IE_IP_ADDRESS: u8 = 		                        74;
 const GTPV2C_IE_MEI: u8 = 		                                75; 		/* Mobile Equipment Identity */

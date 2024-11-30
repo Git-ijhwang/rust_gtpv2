@@ -14,10 +14,11 @@ fn main() {
     /* Read Config */
     // _ = read_conf("src/config");
     let config = CONFIG_MAP.read().unwrap();
-    _ = read_peer("src/config_peer");
+    // _ = read_peer("src/config_peer");
 
-    Peer::print();
+    // Peer::print();
 
+    let buf = gtpv2_send::create_gtpv2_header();
     // let socket = socket_create(src_bind);
     // if socket.is_err() {
     //     println!("{}", socket.unwrap_err());
