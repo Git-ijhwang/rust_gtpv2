@@ -6,10 +6,16 @@ use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
+// use std::{net::Ipv4Addr, str::FromStr, sync::mpsc::{Receiver, Sender}};
+// use std::sync::mpsc::Receiver;
  
-use bytemuck::{Pod, Zeroable};
+// use tokio::sync::mpsc;
+use tokio::time::{self, Duration};
+// use bytemuck::{Pod, Zeroable};
 
 use crate::gtpv2_type::GTPV2C_IE_RECOVERY;
+// use std::sync::mpsc::channel;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 const GTPV2C_PEER_MME: u16 = 1;
 const GTPV2C_PEER_SGW: u16 = 2;
@@ -19,17 +25,18 @@ const GTPV2_VERSION: u8 = 2;
 
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Peer {
     pub ip:             Ipv4Addr,
     pub port:           u16,    // peer port 
     msglen:             u16,    // msg length 
     version:            u8,     // gtp version 
-    status:            u8,     // gtp version 
+    status:             bool,     // gtp version 
+    resend_count:       u8,
 
-    teid:           u32,    // Recieved Sequence number
-    rseq:           u32,    // Recieved Sequence number
-    tseq:           u32,    // Transmit Sequence number 
+    teid:               u32,    // Recieved Sequence number
+    rseq:               u32,    // Recieved Sequence number
+    tseq:               u32,    // Transmit Sequence number 
 }
 
 lazy_static! {
@@ -42,13 +49,30 @@ impl Peer {
         Peer {
             ip,
             port,
-            msglen: 0,
-            version: GTPV2_VERSION,
-            status: 1, //defalut 1
-            teid: 0,
-            rseq: 0,
-            tseq: 0,
+            msglen:     0,
+            version:    GTPV2_VERSION,
+            status:     false,
+            teid:       0,
+            rseq:       0,
+            tseq:       0,
+            resend_count: 0,
         }
+    }
+
+    pub async fn spawn_echo_req_task(self,
+        mut rx2: Receiver<u64>,
+    ) {
+        while let Some(delay) = rx2.recv().await {
+        }
+    }
+
+    pub fn spawn_stop_echo_req(self,
+        mut rx: Receiver<u64>,
+        mut tx2: Sender<u64>
+    ) {
+        tokio::time::sleep(Duration::from_secs(delay as u64)).await;
+        thread::spawn(move || {
+        });
     }
 
     pub fn put_peer(peer: Peer) {
@@ -68,6 +92,31 @@ impl Peer {
         else {
             return  Err(());
         }
+    }
+
+    pub fn get_peer_status(& self) -> bool {
+        self.status
+    }
+
+    pub fn deactivate_peer_status(& mut self) -> bool {
+        self.status = false;
+        self.status
+    }
+
+    pub fn activate_peer_status(& mut self) -> bool {
+        self.status = true;
+        self.status
+    }
+
+    pub fn increase_count(&mut self) {
+        self.resend_count += 1;
+    }
+
+    pub fn get_count(&self) -> u8 {
+        self.resend_count
+    }
+    pub fn reset_count(&mut self){
+        self.resend_count = 0;
     }
 
     pub fn print() {

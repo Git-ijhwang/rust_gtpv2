@@ -2,7 +2,7 @@ use crate::gtp_msg::*;
 // use crate::gtpv2_send::*;
 use crate::gtpv2_type::*;
 // use udpsock;
-use bytemuck::{Pod, Zeroable};
+// use bytemuck::{Pod, Zeroable};
 
 
 pub fn create_gtpv2_header(

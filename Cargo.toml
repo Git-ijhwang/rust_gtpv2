@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 lazy_static = "1.4.0"
-bytemuck = "1.15"
+tokio = { version = "1", features = ["full"] }
