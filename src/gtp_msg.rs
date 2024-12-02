@@ -59,21 +59,21 @@ impl Peer {
         }
     }
 
-    pub async fn spawn_echo_req_task(self,
-        mut rx2: Receiver<u64>,
-    ) {
-        while let Some(delay) = rx2.recv().await {
-        }
-    }
+    // pub async fn spawn_echo_req_task(self,
+    //     mut rx2: Receiver<u64>,
+    // ) {
+    //     while let Some(delay) = rx2.recv().await {
+    //     }
+    // }
 
-    pub fn spawn_stop_echo_req(self,
-        mut rx: Receiver<u64>,
-        mut tx2: Sender<u64>
-    ) {
-        tokio::time::sleep(Duration::from_secs(delay as u64)).await;
-        thread::spawn(move || {
-        });
-    }
+    // pub fn spawn_stop_echo_req(self,
+    //     mut rx: Receiver<u64>,
+    //     mut tx2: Sender<u64>
+    // ) {
+    //     tokio::time::sleep(Duration::from_secs(delay as u64)).await;
+    //     thread::spawn(move || {
+    //     });
+    // }
 
     pub fn put_peer(peer: Peer) {
         let mut list = GTP2_PEER.lock().unwrap();
@@ -93,6 +93,12 @@ impl Peer {
             return  Err(());
         }
     }
+
+    pub fn change_peer_status(&mut self) -> bool {
+        self.status = !self.status;
+        self.status
+    }
+
 
     pub fn get_peer_status(& self) -> bool {
         self.status
@@ -115,6 +121,7 @@ impl Peer {
     pub fn get_count(&self) -> u8 {
         self.resend_count
     }
+
     pub fn reset_count(&mut self){
         self.resend_count = 0;
     }
@@ -144,16 +151,12 @@ pub struct Gtpv2CHeader {
 
 impl Gtpv2CHeader {
     /// GTPv2-C 헤더를 초기화하는 함수
-    pub fn encode<'a> (p:&'a mut [u8],
-            p_flag: bool,
-            t_flag: bool,
-            mp_flag: bool,
-            t: u8,
-            l: u16,
-            teid: u32,
-            s: u32,
-            mp: u8,
-        ) -> (&[u8], usize) {
+    pub fn encode<'a> (p:&'a mut [u8], p_flag: bool,
+            t_flag: bool, mp_flag: bool,
+            t: u8, l: u16, teid: u32,
+            s: u32, mp: u8,) -> (&[u8], usize)
+    {
+
         let mut v = (GTPV2_VERSION & 0b111) << 5; // Version은 상위 3비트
         let mut len = 8; //without TEID Field.
         if p_flag {
@@ -192,11 +195,6 @@ impl Gtpv2CHeader {
 
         (&p[..len as usize], len as usize)
     }
-
-    // T-flag로 TEID의 존재 여부를 반환
-    // pub fn has_teid(&self) -> bool {
-    //     self.v & 0b0000_1000 != 0
-    // }
 
 }
 

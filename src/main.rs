@@ -6,44 +6,47 @@ mod udpsock;
 mod packet;
 mod timer;
 
-use gtp_msg::{Peer, GTP2_PEER};
-use gtpv2_type::{gtpv_msg_type_vals, gtpv_ie_type_vals};
-
+use gtp_msg::*;
+use gtpv2_type::{gtpv_ie_type_vals, gtpv_msg_type_vals, GTPV2C_ECHO_REQ};
+use gtpv2_send::*;
+use timer::EncapPkt;
 use tokio::time::{self, Duration};
+use std::sync::{Arc, Mutex};
 use std::{net::Ipv4Addr, str::FromStr};
-
-use tokio::sync::mpsc;
-// use std::sync::mpsc::channel;
-use tokio::task;
-use timer::start_timer;
-use tokio::sync::oneshot;
-
-
-
 use config::*;
+use timer::*;
 
 
 #[tokio::main]
-async fn main() {
+async fn main()
+{
     /* Read Config */
     // _ = read_conf("src/config");
     let config = CONFIG_MAP.read().unwrap();
     _ = read_peer("src/config_peer");
 
-    Peer::print();
+    let  queue = Arc::new(Mutex::new(MsgQue::new()));
+    // Peer::print();
 
-    
-    let peers = GTP2_PEER.lock().unwrap();
-    let key = u32::from(Ipv4Addr::from_str("192.168.2.1").unwrap()) ;
-    let peer = peers.get(&key);
+    let peer = Peer::get_peer(Ipv4Addr::from_str("192.168.2.1").unwrap());
+    let mut pkt = EncapPkt::new(Ipv4Addr::from_str("192.168.2.1").unwrap(), GTPV2C_ECHO_REQ);
 
-    //timer
-    let (tx, mut rx) = mpsc::channel::<u64>(10);
-    let (tx2, mut rx2) = mpsc::channel::<u64>(10);
-    // peer.spawn_echo_req_task(rx);
-    peer.unwrap().spawn_echo_req_task(rx2);
-    peer.unwrap().spawn_stop_echo_req(rx, tx2);
+    // let len =
+    create_gtpv2_header(&mut pkt);
 
+    println!("Assume message sent");
+
+    pkt.put_que(&mut queue.lock().unwrap());
+    // pkt.copy_data(&buffer, len);
+    println!("put queued");
+    queue.lock().unwrap().check_timer().await;
+
+    loop {
+        let mut cnt = 0;
+        tokio::time::sleep(Duration::from_secs(1)).await; //sleep 100ms
+        cnt += 1;
+        println!("Main Func: {}", cnt);
+    }
     println!("End.");
 
 }
