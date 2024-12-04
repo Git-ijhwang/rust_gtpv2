@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+// use crate::recv_gtpv2::*;
 /*
  		[ 3GPP TS 29.274 V10.5.0 (2011-12) ]
 */
@@ -8,7 +11,7 @@ const GTPV2_T_FLAG: i32 = 	     	                            0x08;
 const GTPV2C_MINIMUM_HEADER_SIZE: i32 = 		                8;
 const GTPV2C_EPC_SPECIFIC_HEADER_SIZE: i32 = 		            12;
 
-
+ 
 /*
  * GTPv2-C Message Type Values
  * ======================================================
@@ -761,6 +764,44 @@ pub static gtpv_ie_type_vals: [&str;256] = [
 	"Private",
 ];
 
+#[derive(Debug, Clone, Copy)]
+struct Gtpv2cIeTv1 {
+	t:		u8,
+	l:		u16,
+	i:		u8,
+	v:		u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Gtpv2cIeTv2 {
+	t:		u8,
+	l:		u16,
+	i:		u8,
+	v:		u16,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Gtpv2cIeTv4 {
+	t:		u8,
+	l:		u16,
+	i:		u8,
+	v:		u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Gtpv2cIeTv8 {
+	t:		u8,
+	l:		u16,
+	i:		u8,
+	v:		u64,
+}
+
+#[derive(Debug)]
+struct Gtpv2cIeTlv {
+    t: u8,      // Type (1 octet)
+    l: u16,     // Length (2 octets)
+    i: u8,      // Spare (4 bits) + Instance (4 bits)
+}
 
 pub fn get_gtpv2_msg_type(t: u8) -> Result<&'static str, ()> {
     if t<0 || t >= GTPV2C_MSG_MAX {
@@ -774,4 +815,70 @@ pub fn get_gtpv2_ie_type(t: u8) -> Result<&'static str, ()> {
 		return Err(());
     }
     Ok(gtpv_ie_type_vals[t as usize])
+}
+
+pub struct MsgMap {
+    pub data: HashMap<u8, String>,
+}
+impl MsgMap {
+	pub fn new() -> Self {
+		MsgMap {
+			data: HashMap::new(),
+		}
+	}
+	pub fn insert(&mut self, key: u8, value: String) {
+        self.data.insert(key, value);
+    }
+	pub fn get(&self, key: u8) -> Option<String> {
+		self.data.get(&key).cloned()
+	}
+}
+pub struct IEMap {
+    pub data: HashMap<u8, String>,
+}
+impl IEMap {
+	pub fn new() -> Self {
+		IEMap {
+			data: HashMap::new(),
+		}
+	}
+	pub fn insert(&mut self, key: u8, value: String) {
+        self.data.insert(key, value);
+    }
+	pub fn get(&self, key: u8) -> Option<String> {
+		self.data.get(&key).cloned()
+	}
+    pub fn ie_type_to_string (&self, k: u8) -> String {
+	    let ret = self.get(k);
+	    match ret {
+		    Some(val) =>  return val,
+		    _ => return "None".to_string(),
+	    }
+    }
+}
+
+
+
+pub fn msg_type_to_string (map:MsgMap, k: u8) -> String {
+	let ret = map.get(k);
+	match ret {
+		Some(val) =>  return val,
+		_ => return "None".to_string(),
+	}
+}
+
+pub fn make_msg_type_map(map: &mut MsgMap) {
+	// let mut map = MsgMap::new();
+	for (k, v) in gtpv_msg_type_vals.iter().enumerate() {
+		map.insert(k as u8, v.to_string());
+	}
+
+}
+
+pub fn make_ie_type_map() -> IEMap { 
+	let mut map = IEMap::new();
+	for (k, v) in gtpv_ie_type_vals.iter().enumerate() {
+		map.insert(k as u8, v.to_string());
+	}
+	map
 }
