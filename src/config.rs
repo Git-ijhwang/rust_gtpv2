@@ -54,18 +54,11 @@ impl ConfigMap
 
 
 
-pub fn read_conf(file: &str ) -> Result<()>
+pub fn read_conf(file: &str , config: &mut ConfigMap) -> Result<()>
 {
     let file = File::open(file)?;
     let reader = io::BufReader::new(file);
 
-    parse_line(reader);
-
-    Ok(())
-}
-
-fn parse_line(reader: BufReader<File>) -> Result<()>
-{
     for line in reader.lines() {
         let mut configline = line?;
 
@@ -85,7 +78,7 @@ fn parse_line(reader: BufReader<File>) -> Result<()>
             let key = configline[..pos].trim().to_string();
             let value = configline[pos+1..].trim().to_string();
 
-            let mut config = CONFIG_MAP.write().unwrap();
+            // let mut config = CONFIG_MAP.write().unwrap();
             config.insert(key, value);
         }
     }
@@ -98,13 +91,7 @@ pub fn read_peer(file: &str ) -> Result<()>
 {
     let file = File::open(file)?;
     let reader = io::BufReader::new(file);
-    parse_peer(reader);
 
-    Ok(())
-}
-
-fn parse_peer(reader: BufReader<File>) -> Result<()>
-{
     for line in reader.lines() {
         let mut configline = line?;
 

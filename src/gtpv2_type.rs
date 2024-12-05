@@ -5,11 +5,11 @@ use std::collections::HashMap;
  		[ 3GPP TS 29.274 V10.5.0 (2011-12) ]
 */
 
-const GTP_VERSION: i32 = 	                    	            0x02;
-const GTPV2_P_FLAG: i32 =                    		            0x10;
-const GTPV2_T_FLAG: i32 = 	     	                            0x08;
-const GTPV2C_MINIMUM_HEADER_SIZE: i32 = 		                8;
-const GTPV2C_EPC_SPECIFIC_HEADER_SIZE: i32 = 		            12;
+pub const GTP_VERSION: u8 = 	                    	            0x02;
+pub const GTPV2_P_FLAG: u8 =                    		            0x10;
+pub const GTPV2_T_FLAG: u8 = 	     	                            0x08;
+pub const GTPV2C_MINIMUM_HEADER_SIZE: u8 = 		                8;
+const GTPV2C_EPC_SPECIFIC_HEADER_SIZE: u8 = 		            12;
 
  
 /*
@@ -867,12 +867,12 @@ pub fn msg_type_to_string (map:MsgMap, k: u8) -> String {
 	}
 }
 
-pub fn make_msg_type_map(map: &mut MsgMap) {
-	// let mut map = MsgMap::new();
+pub fn make_msg_type_map() -> MsgMap {
+	let mut map = MsgMap::new();
 	for (k, v) in gtpv_msg_type_vals.iter().enumerate() {
 		map.insert(k as u8, v.to_string());
 	}
-
+	map
 }
 
 pub fn make_ie_type_map() -> IEMap { 

@@ -4,6 +4,7 @@ use std::time::Duration;
 use std::thread;
 
 use crate::gtp_dictionary::{self, *};
+use crate::validate_gtpv2::*;
 use crate::gtpv2_type::*;
 
 const BUFSIZ: usize = 8192;
@@ -42,13 +43,9 @@ impl Gtpv2IeInfo {
         }
     }
 
-    fn add_ie_parse_info(&mut self,
-        msg_type: u8,
-        min_len: u8,
-        max_len: u8,
-        received: u8,
-        ie_instance: u8,
-        ie_presence: u8,
+    fn add_ie_parse_info(&mut self, msg_type: u8,
+        min_len: u8, max_len: u8, received: u8,
+        ie_instance: u8, ie_presence: u8,
         // gie_info: &[Gtpv2IeInfo]
     ) {
             // if gie.ie_type == 0 {
@@ -70,14 +67,7 @@ impl Gtpv2IeInfo {
             //     self.mie_count += 1;
             // }
         }
-    }
-
-    // pub fn add_ie_parse_info (&mut self,
-    //     ie_info: &Gtpv2IeInfo
-    // ) {
-
-    // }
-// }
+}
 
 
 #[derive(Debug)]
@@ -143,147 +133,6 @@ fn send_gtpv2_version_not_supported(
 
 
 
-// fn gtpv2_ie_parse(hmsg: &[u8], parse_info: &Gtpv2IeParseInfo) -> Result<(), String> {
-//     let mut pmsg = Gtpv2Msg {
-//         msg_type: hmsg[0],
-//         msg_buf: hmsg.to_vec(),
-//         teid_present: hmsg.len() > 8,
-//         valid_ie: vec![vec![false; 16]; 256],
-//         pie: vec![vec![None; 1024]; 256],
-//     };
-
-//     let mut ie_start = if pmsg.teid_present {
-//         &hmsg[12..]
-//     } else {
-//         &hmsg[8..]
-//     };
-
-//     let ie_end = hmsg.len();
-//     let mut ie_count = 0;
-//     let mut mie_count = 0;
-
-//     while ie_start.len() >= 4 {
-//         let ie = Gtpv2cIeTlv {
-//             t: ie_start[0],
-//             l: u16::from_be_bytes([ie_start[1], ie_start[2]]),
-//             i: ie_start[3],
-//         };
-//         let ie_length = ie.l as usize;
-
-//         if ie.t as usize >= parse_info.ie_parse_info.len() //GTPV2_IE_TYPE_MAX
-//             || (ie.i & 0x0F) as usize >= parse_info.ie_parse_info[0].len() {//GTPV2_IE_INSTANCE_MAX
-//                 //perr->cause GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT;
-//                 return Err(format!(
-//                 "Invalid IE type {} and instance {}",
-//                 ie.t, ie.i & 0x0F
-//             ));
-//         }
-
-//         if ie_count == 1024 { //GTPV2C_IE_MAX
-//             //perr->cause GTPV2C_CAUSE_REQUEST_REJECTED;
-//             return Err("Too many IEs".to_string());
-//         }
-
-//         if ie_start.len() < 4 + ie_length {
-//             //perr->cause GTPV2C_CAUSE_INVALID_LENGTH;
-//             return Err(format!(
-//                 "Invalid length for IE type {} instance {}",
-//                 ie.t, ie.i & 0x0F
-//             ));
-//         }
-
-//         let details = &parse_info.ie_parse_info[ie.t as usize][(ie.i & 0x0F) as usize];
-//         if details.ie_presence == 0 {
-//             println!(
-//                 "Unexpected IE type {} instance {} length {}",
-//                 ie.t, ie.i & 0x0F, ie_length
-//             );
-//             continue;
-//         }
-
-//         if ie_length < details.ie_min_length as usize || ie_length > details.ie_max_length as usize {
-//             //perr->cause GTPV2C_CAUSE_INVALID_LENGTH;
-//             return Err(format!(
-//                 "IE type {} instance {} incorrect length {}",
-//                 ie.t, ie.i & 0x0F, ie_length
-//             ));
-//         }
-
-//         if let Some(group_info) = &details.group_ie_info {
-//             gtpv2_group_ie_parse(&mut pmsg, ie_count, group_info, &ie_start[4..4 + ie_length])?;
-//         }
-
-//         if details.ie_presence == 1 {
-//             mie_count += 1;
-//         }
-
-//         ie_count += 1;
-//         ie_start = &ie_start[(4 + ie_length)..];
-//     } //end while
-
-//     if parse_info.mie_count != mie_count {
-//         return Err("Mandatory IE missing".to_string());
-//     }
-
-//     Ok(())
-// }
-
-// 단일 IE 및 중첩된 그룹 검증
-fn validate_ie(
-    expected_ie: &IeInfo, ies: &[(u8, usize, Vec<(u8, usize)>)], is_top_level: bool
-) -> Result<(), String> {
-
-    println!("{:?}--", ies);
-    let mut matches =
-            ies.iter().filter(|(ie_type, _, _)| *ie_type == expected_ie.ie_type);
-
-    println!("{:?}", matches);
-    match expected_ie.presence.as_str() {
-        "MANDATORY" if matches.next().is_none() => {
-            return Err(format!("Mandatory IE {}(0x{:x}) is missing",expected_ie.ie_type, expected_ie.ie_type)); 
-        }
-        "CONTIDIONAL" | "CONTIDIONAL_OPTION" | "OPTIONAL" => {}
-        _ => (),
-    }
-
-    // 중첩 그룹 검증
-    if let Some(group_info) = &expected_ie.group_ie_info {
-        if let Some((_, _, nested_ies)) = ies
-                            .iter()
-                            .find(|(ie_type, _, _)| *ie_type == expected_ie.ie_type){
-                                for group_ie in group_info {
-                                    validate_ie(group_ie, nested_ies, false)?;
-                                }
-                            }
-                            else {
-                                return Err(format! (
-                                    "Mandatory Group IE {}(0x{:x}) is missing",
-                                    expected_ie.ie_type, expected_ie.ie_type
-                                ));
-                            }
-        for group_ie in group_info {
-            validate_ie(group_ie, ies, false)?;
-        }
-    }
-
-    Ok(())
-}
-
-
-fn validate_message( msg_type: u8, ies: Vec<(u8, usize, Vec<(u8, usize)>)>, dictionary: &[GtpMessage]) -> Result<(), String> {
-    let msg_def = dictionary
-        .iter()
-        .find(|msg| msg.msg_type == msg_type)
-        .ok_or(format!("Unknown message type: {}", msg_type))?;
-
-    println!("{:#?}", msg_def.ie_list);
-    for expected_ie in &msg_def.ie_list {
-        validate_ie(expected_ie, &ies, true)?;
-    }
-
-    Ok(())
-}
-
 fn is_group_ie(ie_type: u8, dictionary: &GtpMessage) -> bool {
     dictionary.ie_list
         .iter()
@@ -339,35 +188,7 @@ fn extract_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize, Vec<
     ies
 }
 
-fn
-parse_header (data: Vec<u8>)  -> (u8, usize)
-{
-    const GTP_VERSION: u8 = 2;
-    const GTPV2C_ECHO_REQ: u8 = 1; // Placeholder
-    const GTPV2C_ECHO_RSP: u8 = 2; // Placeholder
-    let mut p : usize = 0;
 
-    let version = (data[p] & 0xE0) >> 5;
-    let pflag = (data[p] & GTPV2_P_FLAG) != 0;
-    let tflag = (data[p] & GTPV2_T_FLAG) != 0; p+=1;
-    let msg_type = data[p]; p+=1;
-    let msg_len = u16::from_be_bytes([data[p], data[p+1]]) as usize; p+=2;
-    let mut seqnum;
-
-    const GTPV2_P_FLAG: u8 = 0x10;
-    const GTPV2_T_FLAG: u8 = 0x08;
-
-    if tflag {
-        p+=4;
-    };
-    seqnum = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]) >> 8;
-    p+=4;
-    // else {
-    //     u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]) >> 8
-    // };
-        return (msg_type, p);
-
-}
 
 pub fn recv_gtpv2(
     // _peer: Arc<Mutex<Gtpv2Peer>>,
@@ -423,44 +244,32 @@ pub fn recv_gtpv2(
                                                             0x72, 0x00, 0x02, 0x00, 0x63, 0x00, 0x5f, 0x00,
           0x02, 0x00, 0x08, 0x00];
 
+    let mut rcv_msg_type;
+    let hdr_len;
+    match parse_header(raw_message.clone()) {
+        Ok( (msg_type, n)) => {
+            rcv_msg_type=msg_type; hdr_len = n; },
+        Err(s) => {
+            println!("{}", s); return; },
+     }
  
-    
-    let (msg_type, n) = parse_header(raw_message.clone());
-
-    // let msg_type = raw_message[1];
-    // let version = (data[p] & 0xE0) >> 5;
-
-    // Search the Message from Dictionary
-    let msg_define = dictionary
+    let mut msg_define;
+    let result = dictionary
             .iter()
-            .find(|msg| msg.msg_type == msg_type)
-            .ok_or(format!("Unknown message type: {:x}", msg_type));
-
-    // println!("MSG DEF: {:#?}. ==== END", msg_define);
-    let ies = extract_ies(&raw_message[n..], msg_define.unwrap().clone());
-    // Type and Length Tuples for IEs
-
-    match validate_message(msg_type, ies.clone(), &dictionary) {
-        Ok(()) => println!("Valid"),
-        Err(e) => println!("Error {}", e),
+            .find(|msg| msg.msg_type == rcv_msg_type)
+            .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
+    
+    match result {
+        Ok(data) =>  msg_define = data, 
+        Err(err) =>{ println!("{}", err); return},
     }
 
 
-    // let mut Ie_Map = IEMap::new();
-    let Ie_Map = make_ie_type_map();
+    let ies = extract_ies(&raw_message[hdr_len..], msg_define);
 
-    let msg_dictionary = msg_define.unwrap().clone();
-    // Validate IE lengths
-    for (ie_type, ie_length) in ies {
-        if let Some(ie_def) = msg_dictionary.ie_list.iter().find(|def| def.ie_type == ie_type) {
-            if ie_length < ie_def.min_length || ie_length > ie_def.max_length {
-                println!(
-                    "IE {} [{}] length {} is out of bounds (min: {}, max: {})",
-                    Ie_Map.ie_type_to_string(ie_type), ie_type,
-                    ie_length, ie_def.min_length, ie_def.max_length
-                );
-            }
-        }
+    let ret = validate(&ies, &dictionary, rcv_msg_type, msg_define);
+    if ret == false {
+        println!("Validation Check false");
     }
 
 	// parse_gtp_message(&raw_message, &dictionary);
@@ -470,51 +279,6 @@ pub fn recv_gtpv2(
 
 
 /*
-fn __recv_gtpv2(data: &[u8], sin_addr: Ipv4Addr, sin_port: u16) 
-// -> i32
-{
-
-    let peerip = u32::from_be_bytes(sin_addr.octets());
-    let peerport = sin_port;
-    let seqnum;
-
-    const GTP_VERSION: u8 = 2;
-    const GTPV2C_ECHO_REQ: u8 = 1; // Placeholder
-    const GTPV2C_ECHO_RSP: u8 = 2; // Placeholder
-    let p : usize = 0;
-
-    let version = (data[p] & 0xE0) >> 5;
-    let pflag = (data[p] & GTPV2_P_FLAG) != 0;
-    let tflag = (data[p] & GTPV2_T_FLAG) != 0; p+=1;
-    let msg_type = data[p]; p+=1;
-    let msg_len = u16::from_be_bytes([data[p], data[p+1]]) as usize; p+=2;
-
-    const GTPV2_P_FLAG: u8 = 0x10;
-    const GTPV2_T_FLAG: u8 = 0x08;
-
-    if tflag {
-        p+=4;
-    };
-    seqnum = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]) >> 8;
-    p+=4;
-    // else {
-    //     u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]) >> 8
-    // };
-
-    // Peer management logic (commented out as requested)
-    let peer = match get_gtpv2_peer(peerip) {
-        Some(peer) => peer,
-        None => {
-            println!("(GTPv2-RECV) unknown Peer ({}). Discard.", sin_addr);
-            return ;
-        }
-    };
-
-    if data.len() < 8 {
-        println!("(GTPv2-RECV) message too small! Discard.");
-        return ;
-    }
-
     {
         let peer = peer.lock().unwrap();
         if peer.status == 0
@@ -526,28 +290,6 @@ fn __recv_gtpv2(data: &[u8], sin_addr: Ipv4Addr, sin_port: u16)
         }
     }
 
-    if msg_len + 4 != data.len() {
-        println!(
-            "(GTPv2-RECV) Length error (received: {}, expected: {}). Discard.",
-            data.len(),
-            msg_len + 4
-        );
-        return ;
-    }
-
-    if version != GTP_VERSION {
-        println!(
-            "(GTPv2-RECV) unsupported GTP version ({}) message! Discard.",
-            version
-        );
-        send_gtpv2_version_not_supported(peer, peerip, peerport, seqnum);
-        return ;
-    }
-
-    // Receive logic
-    // recv_gtpv2(peer, data, data.len(), peerip, peerport)
-    recv_gtpv2();
-}
 */
 
 

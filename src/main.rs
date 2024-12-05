@@ -7,6 +7,7 @@ mod packet;
 mod timer;
 mod gtp_dictionary;
 mod recv_gtpv2;
+mod validate_gtpv2;
 
 use gtp_msg::*;
 use gtpv2_type::{gtpv_ie_type_vals, gtpv_msg_type_vals, GTPV2C_ECHO_REQ};
@@ -24,11 +25,11 @@ use crate::recv_gtpv2::*;
 async fn main()
 {
     /* Read Config */
-    // _ = read_conf("src/config");
+    let mut config: ConfigMap = ConfigMap::new();
+    let mut peer: GTP2_PEER = GTP2_PEER::new();
+    _ = read_conf(&"src/conf/config", &mut config);
     let config = CONFIG_MAP.read().unwrap();
-    _ = read_peer("src/config_peer");
-
-    //Create GTP Dictionary.
+    _ = read_peer("src/conf/config_peer");
 
     // let  queue = Arc::new(Mutex::new(MsgQue::new()));
 
