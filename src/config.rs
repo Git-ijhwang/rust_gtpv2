@@ -1,31 +1,33 @@
-
 use std::fs::File;
-use std::io::Result;
-use std::collections::HashMap;
-use std::str::FromStr;
-// use crate::config::io::BufReader;
-use crate::gtp_msg::Peer;
-use std::io::BufReader;
-use std::io::prelude::*;
 use std::io;
+use std::io::Error;
+use std::io::prelude::*;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::net::Ipv4Addr;
-use crate::gtp_msg::*;
+use std::sync::RwLockWriteGuard;
+use core::result::Result;
 
-#[derive(Debug)]
-pub struct ConfigMap {
-    data: HashMap<String, String>,
-}
 
 lazy_static::lazy_static! {
     pub static ref CONFIG_MAP: Arc<RwLock<ConfigMap>> = Arc::new(RwLock::new(ConfigMap::new()));
 }
 
 
+lazy_static::lazy_static! {
+    pub static ref PEER_MAP: Arc<RwLock<ConfigMap>> = Arc::new(RwLock::new(ConfigMap::new()));
+}
+
+
+#[derive(Debug)]
+pub struct ConfigMap {
+    data: HashMap<String, String>,
+}
+
+
 impl ConfigMap
 {
     pub fn new() -> Self {
-        Self{ 
+        Self { 
             data: HashMap::new()
         }
     }
@@ -38,11 +40,15 @@ impl ConfigMap
         self.data.get(target).cloned()
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &String)> {
+        self.data.iter()
+    }
+
     pub fn create_src_bind_addr(&self) -> String {
         let mut result = String::new();
         let addr = ConfigMap::get(self, "Addr");
         let port  = ConfigMap::get(self, "SrcPort");
-        println!("{:?},{:?}", addr, port);
+        // println!("{:?},{:?}", addr, port);
 
         if addr.is_some() && port.is_some() {
             result = format!("{}:{}", addr.unwrap(), port.unwrap());
@@ -52,11 +58,50 @@ impl ConfigMap
     }
 }
 
+// pub fn read_conf_test(path: &str, peer: bool)
+// ->// Option<
+// RwLockWriteGuard<'_,
+// ConfigMap>
+// // >
+// {
+//     let mut config: Option<RwLockWriteGuard<'_, ConfigMap>> = None;
+//     let key = String::from("test");
+//     let value = String::from("test1");
+
+//     config = Some(CONFIG_MAP.write().unwrap());
+
+//     if let Some(config) = config.as_mut() {
+//         config.insert(key, value);
+//     }
+//     config.unwrap()
+// }
+
+// fn parse_str(input: &str)
+// -> Result<i32, ParseIntError>
+// {
+//     let parsed_number = input.parse::<i32>()?; //실패하면 error return
+//     println!("Parse success");
+//     Ok(parsed_number) //parse()가 성공하면 수행
+// }
 
 
-pub fn read_conf(file: &str , config: &mut ConfigMap) -> Result<()>
+// fn red_conf (path: &str, peer: bool)
+// -> Result<i32, ParseIntError>
+// // -> Error
+// {
+
+//     let mut config: Option<RwLockWriteGuard<'_, ConfigMap>> = None;
+//     let file = File::open(path)?;
+
+
+// }
+
+pub fn read_conf (path: &str, peer: bool)
+        -> Result<(), Error>
 {
-    let file = File::open(file)?;
+    // let mut config;
+    let mut config: Option<RwLockWriteGuard<'_, ConfigMap>> = None;
+    let file = File::open(path)?;
     let reader = io::BufReader::new(file);
 
     for line in reader.lines() {
@@ -78,53 +123,27 @@ pub fn read_conf(file: &str , config: &mut ConfigMap) -> Result<()>
             let key = configline[..pos].trim().to_string();
             let value = configline[pos+1..].trim().to_string();
 
-            // let mut config = CONFIG_MAP.write().unwrap();
-            config.insert(key, value);
+            // if peer {
+            //     config = PEER_MAP.write().unwrap();
+            //     config.insert(key, value);
+            // }
+            // else {
+            //     config = CONFIG_MAP.write().unwrap();
+            //     config.insert(key, value);
+            // }
+
+            if peer {
+                config = Some(PEER_MAP.write().unwrap());
+                if let Some(config) = config.as_mut() {
+                    config.insert(key, value);
+                }
+            } else {
+                config = Some(CONFIG_MAP.write().unwrap());
+                if let Some(config) = config.as_mut() {
+                    config.insert(key, value);
+                }
+            }
         }
     }
-
     Ok(())
-
 }
-
-pub fn read_peer(file: &str ) -> Result<()>
-{
-    let file = File::open(file)?;
-    let reader = io::BufReader::new(file);
-
-    for line in reader.lines() {
-        let mut configline = line?;
-
-        //Skip the comment line with '#'
-        let position = configline.trim().find('#');
-        if position == Some(0) {
-            continue;
-        }
-
-        //Remove string after '#'
-        if let Some(pos) = configline.find('#') {
-            configline = configline[..pos].trim().to_string();
-        }
-
-        //Key, Value pair
-        if let Some(pos) = configline.find('=') {
-            let svr = configline[..pos].trim().to_string();
-            let conn = configline[pos+1..].trim().to_string();
-            let peer;
-
-            let parts: Vec<&str> = conn.split(':').collect();
-
-            let ip = Ipv4Addr::from_str(parts[0]).unwrap();
-            let port = u16::from_str(parts[1]).unwrap();
-            peer = Peer::new(ip, port);
-
-            let mut peerlist = GTP2_PEER.lock().unwrap();
-            peerlist.insert(u32::from(peer.ip), peer);
-        }
-    }
-
-    Ok(())
-
-}
-
-

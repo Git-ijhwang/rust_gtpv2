@@ -2,7 +2,6 @@
 use std::net::UdpSocket;
 extern crate lazy_static;
 
-use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
@@ -17,47 +16,10 @@ use crate::gtpv2_type::*;
 // use std::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-const GTPV2C_PEER_MME: u16 = 1;
-const GTPV2C_PEER_SGW: u16 = 2;
-const GTPV2C_PEER_PGW: u16 = 3;
+// const GTPV2C_PEER_MME: u16 = 1;
+// const GTPV2C_PEER_SGW: u16 = 2;
+// const GTPV2C_PEER_PGW: u16 = 3;
 
-const GTPV2_VERSION: u8 = 2;
-
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct Peer {
-    pub ip:             Ipv4Addr,
-    pub port:           u16,    // peer port 
-    msglen:             u16,    // msg length 
-    version:            u8,     // gtp version 
-    status:             bool,     // gtp version 
-    resend_count:       u8,
-
-    teid:               u32,    // Recieved Sequence number
-    rseq:               u32,    // Recieved Sequence number
-    tseq:               u32,    // Transmit Sequence number 
-}
-
-lazy_static! {
-    pub static ref GTP2_PEER: Mutex<HashMap<u32, Peer>> = Mutex::new(HashMap::new());
-}
-
-impl Peer {
-    pub fn new(ip: Ipv4Addr, port: u16) -> Self {
-
-        Peer {
-            ip,
-            port,
-            msglen:     0,
-            version:    GTPV2_VERSION,
-            status:     false,
-            teid:       0,
-            rseq:       0,
-            tseq:       0,
-            resend_count: 0,
-        }
-    }
 
     // pub async fn spawn_echo_req_task(self,
     //     mut rx2: Receiver<u64>,
@@ -75,64 +37,6 @@ impl Peer {
     //     });
     // }
 
-    pub fn put_peer(peer: Peer) {
-        let mut list = GTP2_PEER.lock().unwrap();
-        if let Some(key) = u32::from(peer.ip).into() {
-            list.insert(key, peer);
-        }
-    }
-
-    pub fn get_peer(ip: Ipv4Addr) -> Result<Self,()> {
-        let list = GTP2_PEER.lock().unwrap();
-        let key = u32::from(ip).into();
-
-        if let Some(peer) = list.get(&key) {
-            Ok( peer.clone())
-        }
-        else {
-            return  Err(());
-        }
-    }
-
-    pub fn change_peer_status(&mut self) -> bool {
-        self.status = !self.status;
-        self.status
-    }
-
-
-    pub fn get_peer_status(& self) -> bool {
-        self.status
-    }
-
-    pub fn deactivate_peer_status(& mut self) -> bool {
-        self.status = false;
-        self.status
-    }
-
-    pub fn activate_peer_status(& mut self) -> bool {
-        self.status = true;
-        self.status
-    }
-
-    pub fn increase_count(&mut self) {
-        self.resend_count += 1;
-    }
-
-    pub fn get_count(&self) -> u8 {
-        self.resend_count
-    }
-
-    pub fn reset_count(&mut self){
-        self.resend_count = 0;
-    }
-
-    pub fn print() {
-        let list = GTP2_PEER.lock().unwrap();
-        println!("{:#?}", list);
-
-    }
-
-}
 
 
 
@@ -157,7 +61,7 @@ impl Gtpv2CHeader {
             s: u32, mp: u8,) -> (&[u8], usize)
     {
 
-        let mut v = (GTPV2_VERSION & 0b111) << 5; // Version은 상위 3비트
+        let mut v = (GTP_VERSION & 0b111) << 5; // Version은 상위 3비트
         let mut len = 8; //without TEID Field.
         if p_flag {
             v |= 0b0001_0000; // P-flag 설정

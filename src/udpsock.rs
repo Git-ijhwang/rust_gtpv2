@@ -1,6 +1,7 @@
 use std::net::UdpSocket;
 
-fn socket_create (src_bind: String) -> Result<UdpSocket, String> {
+
+pub fn socket_create (src_bind: String) -> Result<UdpSocket, String> {
     let socket = UdpSocket::bind(&src_bind).map_err(|e| {
         format!("UDP Socket binding Error on {}: {}", src_bind, e)
     })?;

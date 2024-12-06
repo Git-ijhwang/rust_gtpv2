@@ -8,51 +8,58 @@ mod timer;
 mod gtp_dictionary;
 mod recv_gtpv2;
 mod validate_gtpv2;
+mod peers;
 
-use gtp_msg::*;
-use gtpv2_type::{gtpv_ie_type_vals, gtpv_msg_type_vals, GTPV2C_ECHO_REQ};
-use gtpv2_send::*;
-use timer::EncapPkt;
-use tokio::time::{self, Duration};
-use std::sync::{Arc, Mutex};
-use std::{net::Ipv4Addr, str::FromStr};
 use config::*;
-use timer::*;
+use gtp_msg::*;
+use std::thread;
+use std::io::Error;
+use core::result::Result;
+// use gtpv2_type::{gtpv_ie_type_vals, gtpv_msg_type_vals, GTPV2C_ECHO_REQ};
+// use gtpv2_send::*;
+// use timer::EncapPkt;
+use tokio::time::{self, Duration};
+// use std::sync::{Arc, Mutex};
+// use std::{net::Ipv4Addr, str::FromStr};
+// use timer::*;
+use crate::peers::*;
+use crate::udpsock::*;
 use crate::recv_gtpv2::*;
+use crate::gtp_dictionary::*;
 
 
 #[tokio::main]
-async fn main()
+async fn main() -> Result<(), String>
 {
     /* Read Config */
-    let mut config: ConfigMap = ConfigMap::new();
-    let mut peer: GTP2_PEER = GTP2_PEER::new();
-    _ = read_conf(&"src/conf/config", &mut config);
-    let config = CONFIG_MAP.read().unwrap();
-    _ = read_peer("src/conf/config_peer");
+    read_conf("config/config", false);
+    _ = read_conf("config/config_peer", true);
 
+    let dictionary = load_gtp_dictionary("config/GTPv2_Dictionary.json");
+
+    create_peer();
     // let  queue = Arc::new(Mutex::new(MsgQue::new()));
+    let bind_addr = CONFIG_MAP.read().unwrap();
 
     // let peer = Peer::get_peer(Ipv4Addr::from_str("192.168.2.1").unwrap());
     // let mut pkt = EncapPkt::new(Ipv4Addr::from_str("192.168.2.1").unwrap(), GTPV2C_ECHO_REQ);
-
     // create_gtpv2_header(&mut pkt);
-
-    // println!("Assume message sent");
-
     // pkt.put_que(&mut queue.lock().unwrap());
     // // pkt.copy_data(&buffer, len);
     // println!("put queued");
     // queue.lock().unwrap().check_timer().await;
+    // recv_gtpv2();
+    let recv_socket = socket_create(
+        format!("0.0.0.0:{}",bind_addr.get("SrcPort").unwrap())
+    )?;
 
+    thread::spawn(move || gtpv2_recv_task(recv_socket));
 
-    recv_gtpv2();
     loop {
         let mut cnt = 0;
         tokio::time::sleep(Duration::from_secs(1)).await; //sleep 100ms
         cnt += 1;
         println!("Main Func: {}", cnt);
     }
-    println!("End.");
 
 }

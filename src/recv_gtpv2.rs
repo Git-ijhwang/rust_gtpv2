@@ -203,8 +203,6 @@ pub fn recv_gtpv2(
     // msg_alloc 호출
     // gtpv2_ie_parse 호출
 
-    let dictionary = load_gtp_dictionary("GTPv2_Dictionary.json");
-    // println!("{:#?}", dictionary);
 
     let raw_message: Vec<u8> = vec!
         [ 0x48, 0x20, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00,   0x02, 0x4a, 0x20, 0x00,
@@ -252,9 +250,10 @@ pub fn recv_gtpv2(
         Err(s) => {
             println!("{}", s); return; },
      }
- 
+
+    let dictionary = GTP_DICTIONARY.read().unwrap();
     let mut msg_define;
-    let result = dictionary
+    let result = dictionary 
             .iter()
             .find(|msg| msg.msg_type == rcv_msg_type)
             .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
@@ -268,6 +267,7 @@ pub fn recv_gtpv2(
     let ies = extract_ies(&raw_message[hdr_len..], msg_define);
 
     let ret = validate(&ies, &dictionary, rcv_msg_type, msg_define);
+    // let ret = validate(&ies, &GTP_DICTIONARY.read().unwrap(), rcv_msg_type, msg_define);
     if ret == false {
         println!("Validation Check false");
     }
@@ -294,7 +294,7 @@ pub fn recv_gtpv2(
 
 
 
-fn gtpv2_recv_task(socket: Arc<UdpSocket>) {
+pub fn gtpv2_recv_task(socket: UdpSocket) {
     let mut buf = [0u8; BUFSIZ];
     let timeout = Duration::from_secs(1);
 

@@ -71,7 +71,7 @@ validate(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, dictionary: &[GtpMessage], rc
     }
 
     // let mut Ie_Map = IEMap::new();
-    let ie_map = make_ie_type_map();
+    let ie_map = IEMap::make_ie_type_map();
 
     // Validate IE lengths
     for (ie_type, ie_length, _) in ies {

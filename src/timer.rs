@@ -6,8 +6,9 @@ use std::sync::mpsc::{Sender, Receiver};
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 
-use crate::gtp_msg::{self, Peer};
+use crate::gtp_msg::*;
 use crate::gtpv2_type::*;
+use crate::peers::*;
 
 // pub async fn start_timer(
 // interval: Duration,
