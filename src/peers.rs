@@ -46,14 +46,7 @@ impl Peer {
         }
     }
 
-    pub fn put_peer(peer: Peer) {
-        let mut list = GTP2_PEER.lock().unwrap();
-        if let Some(key) = u32::from(peer.ip).into() {
-            list.insert(key, peer);
-        }
-    }
-
-    pub fn get_peer(ip: Ipv4Addr) -> Result<Self,()> {
+    pub fn check_peer(ip: Ipv4Addr) -> Result<Self,()> {
         let list = GTP2_PEER.lock().unwrap();
         let key = u32::from(ip).into();
 
@@ -62,6 +55,13 @@ impl Peer {
         }
         else {
             return  Err(());
+        }
+    }
+
+    pub fn put_peer(peer: Peer) {
+        let mut list = GTP2_PEER.lock().unwrap();
+        if let Some(key) = u32::from(peer.ip).into() {
+            list.insert(key, peer);
         }
     }
 
@@ -120,8 +120,20 @@ pub fn create_peer () {
 
     let peerlist = GTP2_PEER.lock().unwrap();
 
-    peerlist.iter().for_each(|x| {
-        println!("{:?}", x);
-    });
-    
+    // peerlist.iter().for_each(|x| {
+    //     println!("{:?}", x);
+    // });
+}
+
+
+pub fn get_peer(ip: &Ipv4Addr) -> Result<Peer, ()> {
+    let list = GTP2_PEER.lock().unwrap();
+    let key = u32::from(*ip).into();
+
+    if let Some(peer) = list.get(&key) {
+        Ok( peer.clone())
+    }
+    else {
+        Err(())
+    }
 }

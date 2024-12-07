@@ -1,60 +1,24 @@
-#[macro_use]
-use std::net::UdpSocket;
 extern crate lazy_static;
-
-use std::net::Ipv4Addr;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
-// use std::{net::Ipv4Addr, str::FromStr, sync::mpsc::{Receiver, Sender}};
-// use std::sync::mpsc::Receiver;
- 
-// use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
-// use bytemuck::{Pod, Zeroable};
-
 use crate::gtpv2_type::*;
-// use std::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
-
-// const GTPV2C_PEER_MME: u16 = 1;
-// const GTPV2C_PEER_SGW: u16 = 2;
-// const GTPV2C_PEER_PGW: u16 = 3;
-
-
-    // pub async fn spawn_echo_req_task(self,
-    //     mut rx2: Receiver<u64>,
-    // ) {
-    //     while let Some(delay) = rx2.recv().await {
-    //     }
-    // }
-
-    // pub fn spawn_stop_echo_req(self,
-    //     mut rx: Receiver<u64>,
-    //     mut tx2: Sender<u64>
-    // ) {
-    //     tokio::time::sleep(Duration::from_secs(delay as u64)).await;
-    //     thread::spawn(move || {
-    //     });
-    // }
-
-
 
 
 // #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 // #[derive(Debug, Clone, Copy, Pod, Zeroable)] // bytemuck의 Pod와 Zeroable 트레잇 구현
 pub struct Gtpv2CHeader {
-    pub v: u8,  // Version (3 bits) + P flag (1 bit) + T flag (1 bit) + MP flag (1bit + 2 spare bits 
-    pub t: u8,      // Message type (8 bits)
-    pub l: u16,   // Message length (16 bits)
-    pub teid: u32,     // TEID (32 bits), optional based on T flag
-    pub s: u32,  // Sequence number (24 bits) + 4  Message Priority + 4 spare bits
-
+    pub v:      u8,     // Version (3 bits) + P flag (1 bit) + T flag (1 bit) + MP flag (1bit + 2 spare bits 
+    pub t:      u8,     // Message type (8 bits)
+    pub l:      u16,    // Message length (16 bits)
+    pub teid:   u32,    // TEID (32 bits), optional based on T flag
+    pub s:      u32,    // Sequence number (24 bits) + 4  Message Priority + 4 spare bits
     // pub ies: Vec<u8>,
 }
 
+
+// GTPv2-C 헤더를 초기화하는 함수
 impl Gtpv2CHeader {
-    /// GTPv2-C 헤더를 초기화하는 함수
     pub fn encode<'a> (p:&'a mut [u8], p_flag: bool,
             t_flag: bool, mp_flag: bool,
             t: u8, l: u16, teid: u32,
@@ -115,8 +79,7 @@ impl gtpv2c_ie1 {
         let l = 1u16.to_be_bytes();
         let mut i =i& 0x0f;
 
-        &p[..5].copy_from_slice(
-            &[ t, l[0], l[1], i, v, ] );
+        &p[..5].copy_from_slice( &[ t, l[0], l[1], i, v, ] );
     }
 }
 

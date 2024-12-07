@@ -69,12 +69,12 @@ use crate::peers::*;
 
 static ECHO_TIMEOUT: Duration = Duration::from_secs(3);
 pub struct EncapPkt {
-    peer_index: Ipv4Addr,
-    msg_type:   u8,
-    send_time:  Instant,
-    expiry:     Duration,// duration time in Sec
-    send_count: u32,
-    pub datalen: usize,
+    pub peer_index: Ipv4Addr,
+    pub msg_type:   u8,
+    pub send_time:  Instant,
+    pub expiry:     Duration,   // duration time in Sec
+    pub send_count: u32,
+    pub datalen:    usize,
     pub data:       [u8; 1024],
 }
 
@@ -177,9 +177,10 @@ impl MsgQue  {
             }
 
             for item in &mut expired {
-                let mut peer = Peer::get_peer(item.peer_index).unwrap();
+                let mut peer = get_peer(&item.peer_index).unwrap();
                 let buf = format!("Before: {}", peer.get_peer_status());
                 peer.deactivate_peer_status();
+
                 println!("{} After: {}",buf, peer.get_peer_status());
                 self.rm_peer(item.peer_index);
             }

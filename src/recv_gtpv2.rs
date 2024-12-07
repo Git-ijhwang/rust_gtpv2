@@ -1,4 +1,4 @@
-use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::thread;
@@ -6,6 +6,7 @@ use std::thread;
 use crate::gtp_dictionary::{self, *};
 use crate::validate_gtpv2::*;
 use crate::gtpv2_type::*;
+use crate::peers::*;
 
 const BUFSIZ: usize = 8192;
 
@@ -87,6 +88,7 @@ struct IeParseGroupDetails { //XXX
     reserved: u8,
 }
 
+
 #[derive(Debug)]
 struct Gtpv2GroupIeParseInfo {//gtpv2_group_ie_parse_info_t
     group_ie_type: u8,
@@ -95,6 +97,7 @@ struct Gtpv2GroupIeParseInfo {//gtpv2_group_ie_parse_info_t
     ie_parse_info: Vec<Vec<IeParseDetails>>,//[typemax][instancemax]
 }
 
+
 #[derive(Debug)]
 struct Gtpv2IeParseInfo { //gtpv2_ie_parse_info_t
     group_ie_type: u8,
@@ -102,8 +105,6 @@ struct Gtpv2IeParseInfo { //gtpv2_ie_parse_info_t
 
     ie_parse_info: Vec<Vec<IeParseDetails>>,//[typemax][instancemax]
 }
-
-
 
 
 #[derive(Debug)]
@@ -132,14 +133,12 @@ fn send_gtpv2_version_not_supported(
 }
 
 
-
 fn is_group_ie(ie_type: u8, dictionary: &GtpMessage) -> bool {
     dictionary.ie_list
         .iter()
-        .find(|info| info.ie_type == ie_type)
+        .find(|info| info.ie_type == ie_type )
         .map_or(false, |info| info.group_ie_info.is_some())
 }
-
 
 
 fn extract_nested_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize) > {
@@ -160,6 +159,7 @@ fn extract_nested_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usiz
 
     ies
 }
+
 
 fn extract_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize, Vec<(u8, usize)>) > {
     let mut ies = Vec::new();
@@ -189,10 +189,9 @@ fn extract_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize, Vec<
 }
 
 
-
-pub fn recv_gtpv2(
+pub fn recv_gtpv2( _data: &[u8],
     // _peer: Arc<Mutex<Gtpv2Peer>>,
-    // _data: &[u8],
+    peer: Peer,
     // _n: usize,
     // _peerip: u32,
     // _peerport: u16,
@@ -200,50 +199,11 @@ pub fn recv_gtpv2(
     // Example function to handle received GTPv2 data
     println!("Processed GTPv2 data.");
     
-    // msg_alloc 호출
-    // gtpv2_ie_parse 호출
-
-
-    let raw_message: Vec<u8> = vec!
-        [ 0x48, 0x20, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00,   0x02, 0x4a, 0x20, 0x00,
-                                                                                    0x01, 0x00, 0x08, 0x00,
-          0x54, 0x00, 0x16, 0x10, 0x11, 0x05, 0x00, 0xf7,   
-                                                            0x4c, 0x00, 0x06, 0x00, 0x28, 0x01, 0x11, 0x51,
-          0x00, 0x70,
-                      0x4b, 0x00, 0x0f, 0x00, 0x31, 0x32,   0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61,
-          0x62, 0x63, 0x64, 0x65, 0x66,
-                                        0x56, 0x00, 0x0d,   0x00, 0x18, 0x54, 0xf0, 0x60, 0x04, 0xd2, 0x54,
-          0xf0, 0x60, 0x00, 0xbc, 0x61, 0x4e,
-                                              0x53, 0x00,   0x03, 0x00, 0x54, 0xf0, 0x60,
-                                                                                          0x52, 0x00, 0x01,
-          0x00, 0x06,
-                      0x4d, 0x00, 0x03, 0x00, 0x08, 0x00,   0x00,
-                                                                  0x57, 0x00, 0x09, 0x00, 0x8a, 0x10, 0x00,
-          0xc3, 0x56, 0x0a, 0x0a, 0x01, 0x47,
-                                              0x57, 0x00,   0x09, 0x01, 0x87, 0x00, 0x00, 0x00, 0x00, 0x0a,
-          0x0a, 0x03, 0x49,
-                            0x47, 0x00, 0x29, 0x00, 0x69,   0x6e, 0x74, 0x65, 0x72, 0x6e, 0x65, 0x74, 0x2e,
-          0x6c, 0x67, 0x75, 0x70, 0x6c, 0x75, 0x73, 0x2e,   0x63, 0x6f, 0x2e, 0x6b, 0x72, 0x2e, 0x6d, 0x6e,
-          0x63, 0x30, 0x30, 0x36, 0x2e, 0x6d, 0x63, 0x63,   0x34, 0x35, 0x30, 0x2e, 0x67, 0x70, 0x72, 0x73,
-          
-          0x80, 0x00, 0x01, 0x00, 0x00,
-                                        0x63, 0x00, 0x01,   0x00, 0x01,
-                                                                        0x4f, 0x00, 0x05, 0x00, 0x01, 0x00,
-          0x00, 0x00, 0x00,
-                            0x7f, 0x00, 0x01, 0x00, 0x00,   
-                                                            0x48, 0x00, 0x08, 0x00, 0x00, 0x01, 0x86, 0xa0,
-          0x00, 0x01, 0x86, 0xa0,       
-                                  0x4e, 0x00, 0x1d, 0x00,   0x80, 0x80, 0x21, 0x10, 0x01, 0x00, 0x00, 0x10,
-          0x81, 0x06, 0x00, 0x00, 0x00, 0x00, 0x83, 0x06,   0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
-          0x0d, 0x00, 0x00, 0x0a, 0x00,
-                                        0x5d, 0x00, 0x1f,   0x00, 0x49, 0x00, 0x01, 0x00, 0x05, 0x50, 0x00,
-          0x16, 0x00, 0x04, 0x06, 0x00, 0x00, 0x00, 0x00,   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,   
-                                                            0x72, 0x00, 0x02, 0x00, 0x63, 0x00, 0x5f, 0x00,
-          0x02, 0x00, 0x08, 0x00];
-
-    let mut rcv_msg_type;
+    let raw_message: Vec<u8> = vec![ ];
     let hdr_len;
+    let mut rcv_msg_type;
+    let mut msg_define;
+
     match parse_header(raw_message.clone()) {
         Ok( (msg_type, n)) => {
             rcv_msg_type=msg_type; hdr_len = n; },
@@ -252,29 +212,25 @@ pub fn recv_gtpv2(
      }
 
     let dictionary = GTP_DICTIONARY.read().unwrap();
-    let mut msg_define;
+
     let result = dictionary 
             .iter()
-            .find(|msg| msg.msg_type == rcv_msg_type)
+            .find(|msg| msg.msg_type == rcv_msg_type )
             .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
     
     match result {
-        Ok(data) =>  msg_define = data, 
-        Err(err) =>{ println!("{}", err); return},
+        Ok(data) => msg_define = data, 
+        Err(err) => { println!("{}", err); return },
     }
-
 
     let ies = extract_ies(&raw_message[hdr_len..], msg_define);
-
-    let ret = validate(&ies, &dictionary, rcv_msg_type, msg_define);
-    // let ret = validate(&ies, &GTP_DICTIONARY.read().unwrap(), rcv_msg_type, msg_define);
-    if ret == false {
-        println!("Validation Check false");
+    if let Err(ret) = validate(&ies, msg_define) {
+        println!("Validation Check false: [{}]", ret);
     }
 
-	// parse_gtp_message(&raw_message, &dictionary);
-    // __proc_gtpv2 호출
-
+    //validation check완료.
+    // TODO:
+ 
 }
 
 
@@ -296,27 +252,38 @@ pub fn recv_gtpv2(
 
 pub fn gtpv2_recv_task(socket: UdpSocket) {
     let mut buf = [0u8; BUFSIZ];
-    let timeout = Duration::from_secs(1);
+    let timeout = Duration::from_micros(100);
 
     loop {
         socket.set_read_timeout(Some(timeout)).unwrap();
 
-        // match socket.recv_from(&mut buf) {
-        //     Ok((nbyte, addr)) => {
-        //         if let SocketAddrV4::V4(addr) = addr {
-        //             let sin_addr = addr.ip();
-        //             let sin_port = addr.port();
-        //             __recv_gtpv2(&buf[..nbyte], *sin_addr, sin_port);
-        //         }
-        //     }
-        //     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-        //         // Timeout occurred, continue to next iteration
-        //         continue;
-        //     }
-        //     Err(e) => {
-        //         println!("Error receiving data: {:?}", e);
-        //         break;
-        //     }
+        match socket.recv_from(&mut buf) {
+            Ok((nbyte, addr)) => {
+                if let SocketAddr::V4(addr) = addr {
+                    let sin_addr = addr.ip();
+                    let sin_port = addr.port();
+
+                    match get_peer(sin_addr) {
+                        Err(_) => {
+                            println!("This is not registered PEER!");
+                        } 
+
+                        Ok(peer) => {
+                            // if let Err(_) =
+                            _ = recv_gtpv2(&buf[..nbyte], peer);
+                        }
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // Timeout occurred, continue to next iteration
+                continue;
+            }
+            Err(e) => {
+                println!("Error receiving data: {:?}", e);
+                break;
+            }
+        }
     }
 }
 

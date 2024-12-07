@@ -1,4 +1,6 @@
 use crate::gtp_dictionary::{self, *};
+use std::io::Error;
+use core::result::Result;
 use crate::gtpv2_type::*;
 
 // 단일 IE 및 중첩된 그룹 검증
@@ -7,7 +9,7 @@ fn validate_ie(
 ) -> Result<(), String> {
 
     let mut matches =
-            ies.iter().filter(|(ie_type, _, _)| *ie_type == expected_ie.ie_type);
+            ies.iter().filter(|(ie_type, _, _)| *ie_type  == expected_ie.ie_type);
 
     match expected_ie.presence.as_str() {
         "MANDATORY" if matches.next().is_none() => {
@@ -19,10 +21,11 @@ fn validate_ie(
 
     // 중첩 그룹 검증
     if let Some(group_info) = &expected_ie.group_ie_info {
-        if let Some((_, _, nested_ies)) =
-            ies.iter().find(|(ie_type, _, _)| *ie_type == expected_ie.ie_type){
-                validate_group_ie(group_info, nested_ies)?;
-        }
+
+        if let Some((_, _, nested_ies)) = ies.iter().find
+            ( |(ie_type, _, _)| *ie_type  == expected_ie.ie_type ) {
+                validate_group_ie(group_info, nested_ies, expected_ie.ie_type)?;
+            }
         else {
             return Err(format! ( "Mandatory Group IE {}(0x{:x}) is missing",
                 expected_ie.ie_type, expected_ie.ie_type));
@@ -34,59 +37,67 @@ fn validate_ie(
 
 
 fn validate_group_ie(
-    group_info: &[IeInfo], nested_ies: &Vec<(u8, usize)>)
+    group_info: &[IeInfo], nested_ies: &Vec<(u8, usize)>, group_ie_type: u8)
 -> Result<(), String> {
 
     for group_ie in group_info {
-        let is_gie_present = nested_ies.iter().any(|(ie_type, _)| *ie_type == group_ie.ie_type);
+        let is_gie_present = nested_ies.iter().any(|(ie_type, _)| *ie_type  == group_ie.ie_type);
         if group_ie.presence == "MANDATORY" && !is_gie_present {
-            return Err(format!("Mandatory IE {}(0x{:x}) is missing",group_ie.ie_type, group_ie.ie_type)); 
+            return Err(format!("Mandatory Group IE {}(0x{:x}) of {} is missing",
+                group_ie.ie_type, group_ie.ie_type, group_ie_type)); 
         }
     }
     Ok(())
 }
 
-fn validate_message(
-    msg_type: u8, ies: Vec<(u8, usize, Vec<(u8, usize)>)>, dictionary: &[GtpMessage])
--> Result<(), String> {
-    let msg_def = dictionary
-        .iter()
-        .find(|msg| msg.msg_type == msg_type)
-        .ok_or(format!("Unknown message type: {}", msg_type))?;
+// fn validate_message( msg_type: u8, ies: Vec<(u8, usize, Vec<(u8, usize)>)>, msg_def: &GtpMessage )
+// -> Result<(), String> {
+//     // let msg_def = dictionary
+//     //     .iter()
+//     //     .find(|msg| msg.msg_type == msg_type )
+//     //     .ok_or(format!("Unknown message type: {}", msg_type))?;
 
-    for expected_ie in &msg_def.ie_list {
+//     for expected_ie in &msg_def.ie_list {
+//         validate_ie(expected_ie, &ies, true)?;
+//     }
+
+//     Ok(())
+// }
+
+// dictionary: &[GtpMessage],
+pub fn
+validate(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMessage)
+-> Result<bool, String> {
+
+    // let dictionary = GTP_DICTIONARY.read().unwrap();
+
+    // match validate_message(rcv_msg_type, ies.clone(), &msg_dictionary) {
+    //     Ok(()) => println!("Valid"),
+    //     Err(e) => println!("Error {}", e),
+    // }
+
+    for expected_ie in &msg_dictionary.ie_list {
         validate_ie(expected_ie, &ies, true)?;
     }
 
-    Ok(())
-}
-
-pub fn
-validate(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, dictionary: &[GtpMessage], rcv_msg_type: u8, msg_dictionary: &GtpMessage)
--> bool {
-
-    match validate_message(rcv_msg_type, ies.clone(), &dictionary) {
-        Ok(()) => println!("Valid"),
-        Err(e) => println!("Error {}", e),
-    }
-
-    // let mut Ie_Map = IEMap::new();
     let ie_map = IEMap::make_ie_type_map();
 
     // Validate IE lengths
     for (ie_type, ie_length, _) in ies {
-        if let Some(ie_def) = msg_dictionary.ie_list.iter().find(|def| def.ie_type == *ie_type) {
+        if let Some(ie_def) =
+            msg_dictionary.ie_list.iter().find(|def| def.ie_type == *ie_type ) {
             if ie_length < &ie_def.min_length || ie_length > &ie_def.max_length {
-                println!(
+                return Err(format!(
                     "IE {} [{}] length {} is out of bounds (min: {}, max: {})",
                     ie_map.ie_type_to_string(*ie_type), ie_type,
-                    ie_length, ie_def.min_length, ie_def.max_length
-                );
+                    ie_length, ie_def.min_length, ie_def.max_length)); 
             }
         }
     }
-    return true;
+
+    Ok(true)
 }
+
 
 pub fn
 parse_header (data: Vec<u8>)  -> Result<(u8, usize), String>

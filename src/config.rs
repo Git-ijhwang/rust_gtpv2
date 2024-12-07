@@ -4,7 +4,7 @@ use std::io::Error;
 use std::io::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::sync::RwLockWriteGuard;
+// use std::sync::RwLockWriteGuard;
 use core::result::Result;
 
 
@@ -100,9 +100,16 @@ pub fn read_conf (path: &str, peer: bool)
         -> Result<(), Error>
 {
     // let mut config;
-    let mut config: Option<RwLockWriteGuard<'_, ConfigMap>> = None;
+    // let mut config: Option<RwLockWriteGuard<'_, ConfigMap>> = None;
     let file = File::open(path)?;
     let reader = io::BufReader::new(file);
+
+    let mut config = if peer {
+        PEER_MAP.write().unwrap()
+    }
+    else {
+        CONFIG_MAP.write().unwrap()
+    };
 
     for line in reader.lines() {
         let mut configline = line?;
@@ -123,26 +130,7 @@ pub fn read_conf (path: &str, peer: bool)
             let key = configline[..pos].trim().to_string();
             let value = configline[pos+1..].trim().to_string();
 
-            // if peer {
-            //     config = PEER_MAP.write().unwrap();
-            //     config.insert(key, value);
-            // }
-            // else {
-            //     config = CONFIG_MAP.write().unwrap();
-            //     config.insert(key, value);
-            // }
-
-            if peer {
-                config = Some(PEER_MAP.write().unwrap());
-                if let Some(config) = config.as_mut() {
-                    config.insert(key, value);
-                }
-            } else {
-                config = Some(CONFIG_MAP.write().unwrap());
-                if let Some(config) = config.as_mut() {
-                    config.insert(key, value);
-                }
-            }
+            config.insert(key, value);
         }
     }
     Ok(())
