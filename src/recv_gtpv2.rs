@@ -1,11 +1,13 @@
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use core::result::Result;
 use std::thread;
 
 use crate::gtp_dictionary::{self, *};
 use crate::validate_gtpv2::*;
 use crate::gtpv2_type::*;
+use std::io::Error;
 use crate::peers::*;
 
 const BUFSIZ: usize = 8192;
@@ -140,6 +142,20 @@ fn is_group_ie(ie_type: u8, dictionary: &GtpMessage) -> bool {
         .map_or(false, |info| info.group_ie_info.is_some())
 }
 
+pub fn find_dictionary(msg_type: u8) -> Result<GtpMessage, String> {
+
+    let dictionary = GTP_DICTIONARY.read().unwrap();
+
+    let result = dictionary 
+            .iter()
+            .find(|msg| msg.msg_type == msg_type )
+            .ok_or(format!("Unknown message type: 0x{:x}", msg_type));
+    
+    match result {
+        Ok(data) =>  Ok(data.clone()), 
+        Err(err) =>  Err("Unknow Message type".to_string()),
+    }
+}
 
 fn extract_nested_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize) > {
     let mut ies = Vec::new();
@@ -201,8 +217,8 @@ pub fn recv_gtpv2( _data: &[u8],
     
     let raw_message: Vec<u8> = vec![ ];
     let hdr_len;
-    let mut rcv_msg_type;
-    let mut msg_define;
+    let rcv_msg_type;
+    let msg_define;
 
     match parse_header(raw_message.clone()) {
         Ok( (msg_type, n)) => {
@@ -252,9 +268,11 @@ pub fn recv_gtpv2( _data: &[u8],
 
 pub fn gtpv2_recv_task(socket: UdpSocket) {
     let mut buf = [0u8; BUFSIZ];
-    let timeout = Duration::from_micros(100);
+    let timeout = Duration::from_millis(1000);
 
     loop {
+        println!("Start Recv Task");
+
         socket.set_read_timeout(Some(timeout)).unwrap();
 
         match socket.recv_from(&mut buf) {

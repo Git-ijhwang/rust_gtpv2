@@ -9,6 +9,7 @@ mod gtp_dictionary;
 mod recv_gtpv2;
 mod validate_gtpv2;
 mod peers;
+mod session;
 
 use config::*;
 use gtp_msg::*;
@@ -20,6 +21,18 @@ use crate::peers::*;
 use crate::udpsock::*;
 use crate::recv_gtpv2::*;
 use crate::gtp_dictionary::*;
+use std::net::AddrParseError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum MyError {
+    #[error("Address parsing error: {0}")]
+    AddrError(AddrParseError),
+
+    #[error("Unknown error occurred")]
+    Unknown,
+}
+
 
 
 #[tokio::main]
@@ -36,22 +49,28 @@ async fn main() -> Result<(), Error>
         return Err(v);
     }
 
-    load_gtp_dictionary("src/config/GTPv2_Dictionary.json");
+    if let Err(v) = load_gtp_dictionary("src/config/GTPv2_Dictionary.json"){
+        println!("Failed load dictionary file");
+        return Err(v);
+    }
 
     create_peer();
 
-    let bind_addr = CONFIG_MAP.read().unwrap();
+    let config = CONFIG_MAP.read().unwrap();
 
-    if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", bind_addr.get("SrcPort").unwrap().to_string())) {
+    if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", config.get("SrcPort").unwrap().to_string())) {
         println!("Socket Successfully Created!: {:?}", recv_socket);
         thread::spawn(move || gtpv2_recv_task(recv_socket));
         // recv_gtpv2();
     }
     else{
         eprintln!("Failed to create socket for address 0.0.0.0:{}",
-        bind_addr.get("SrcPort").unwrap());
+        config.get("SrcPort").unwrap());
     }
 
-    loop { tokio::time::sleep(Duration::from_secs(1)).await; };
+    loop {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        peer_manage().await;
+    };
 
 }

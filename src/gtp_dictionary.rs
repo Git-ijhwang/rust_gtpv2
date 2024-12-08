@@ -11,7 +11,7 @@ use core::result::Result;
 // use std::io::Error;
 
 // GTP Message Structure
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IeInfo {
     pub ie_type:    u8,
     pub min_length: usize,
@@ -22,7 +22,7 @@ pub struct IeInfo {
     pub group_ie_info: Option<Vec<IeInfo>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GtpMessage {
     pub msg_type:   u8,
     pub msg_name:   String,
@@ -62,18 +62,7 @@ pub fn load_gtp_dictionary(file_path: &str)
 {
     let file = File::open(file_path)?;
     let reader = BufReader::new(file);
-    // println!("{:?}", reader);
 
-    // let content = reader.lines().collect::<Result<Vec<String>, _>>()?.join("\n");
-    // println!("{}", content);
-    // let message: GtpMessage = serde_json::from_str(&content)
-    // .map_err(|e| {
-    //     eprintln!("Failed to parse JSON: {}", e);
-    //     println!("Error {}", e);
-    //     e
-    // })?;
-
-    // let message: GtpMessage = serde_json::from_reader(reader)
     let messages: Vec<GtpMessage> = serde_json::from_reader(reader)
         .map_err( |e| {
             eprintln!("Failed to parse JSON: {}", e);

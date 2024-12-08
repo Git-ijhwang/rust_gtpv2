@@ -1,7 +1,8 @@
 extern crate lazy_static;
 use tokio::time::{self, Duration};
-use crate::gtpv2_type::*;
+use crate::{find_dictionary, gtpv2_type::*, GTP_DICTIONARY};
 use tokio::sync::mpsc::{Receiver, Sender};
+use crate::peers::*;
 
 
 // #[derive(Debug, Clone, Copy)]
@@ -19,10 +20,20 @@ pub struct Gtpv2CHeader {
 
 // GTPv2-C 헤더를 초기화하는 함수
 impl Gtpv2CHeader {
+    pub fn new() -> Self {
+        Self {
+            v : 0,
+            t : 0,
+            l : 0,
+            teid : 0,
+            s : 0,
+        }
+    }
+
     pub fn encode<'a> (p:&'a mut [u8], p_flag: bool,
             t_flag: bool, mp_flag: bool,
             t: u8, l: u16, teid: u32,
-            s: u32, mp: u8,) -> (&[u8], usize)
+            s: u32, mp: u8) -> (&[u8], usize)
     {
 
         let mut v = (GTP_VERSION & 0b111) << 5; // Version은 상위 3비트
@@ -41,22 +52,20 @@ impl Gtpv2CHeader {
             s |= mp as u32;
         }
 
-        let l_bytes = l.to_be_bytes();
-        let teid_bytes = teid.to_be_bytes();
-        let s_bytes = s.to_be_bytes();
+        let l_bytes     = l.to_be_bytes();
+        let teid_bytes  = teid.to_be_bytes();
+        let s_bytes     = s.to_be_bytes();
 
         if t_flag {
             p[..len].copy_from_slice(
-                &[ v,
-                t,
+                &[ v, t,
                 l_bytes[0], l_bytes[1],
                 teid_bytes[0], teid_bytes[1], teid_bytes[2], teid_bytes[3],
                 s_bytes[0], s_bytes[1], s_bytes[2], s_bytes[3] ]);
         }
         else {
             p[..len].copy_from_slice(
-                &[ v,
-                t,
+                &[ v, t,
                 l_bytes[0], l_bytes[1],
                 s_bytes[0], s_bytes[1], s_bytes[2], s_bytes[3], ]);
         }
@@ -127,3 +136,28 @@ pub fn create_ie <'a> (p:&'a mut [u8], t:u8, val:u8) -> usize
     len
 }
 
+
+pub fn make_gtpv2(msg_type: u8, peer: &mut Peer) {
+    let mut buffer: [u8; 1024] = [0; 1024]; 
+    let mut len :usize = 0;
+
+    let msg_info = find_dictionary(msg_type);
+
+    // println!("{:#?}", msg_info);
+    // let pkt = Gtpv2CHeader::new();
+
+    (_, len) = Gtpv2CHeader::encode ( &mut buffer, false,
+        false, false,
+        msg_type, 9, 0, peer.tseq, 0) ;
+
+    for item in msg_info.unwrap().ie_list {
+        // println!("{}: {}, {}", item.ie_type,gtpv_ie_type_vals[item.ie_type as usize], item.presence);
+        if item.presence == "MANDATORY" {
+            len += create_ie(&mut buffer[len..], item.ie_type,177);
+        }
+    }
+    // println!("Len: {} ==>{:?}",len, &buffer[..len]);
+    peer.update_last_echo_snd_time();
+    peer.increase_count();
+
+}
