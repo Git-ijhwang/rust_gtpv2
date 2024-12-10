@@ -1,14 +1,18 @@
+use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket, SocketAddr};
+use std::ptr::slice_from_raw_parts;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use core::result::Result;
 use std::thread;
+use std::collections::HashMap;
 
 use crate::gtp_dictionary::{self, *};
 use crate::validate_gtpv2::*;
 use crate::gtpv2_type::*;
 use std::io::Error;
 use crate::peers::*;
+use crate::session::*;
 
 const BUFSIZ: usize = 8192;
 
@@ -123,6 +127,63 @@ fn get_gtpv2_peer(ip: u32) -> Option<Arc<Mutex<Gtpv2Peer>>> {
     // Return None if no peer is found
     None
 }
+fn encode_tbcd(input: &[u8]) -> Result<Vec<u8>, String> {
+    let n = input.len();
+    if n < 2 || n > 32 {
+        return Err("Input length must be between 2 and 32".to_string());
+    }
+
+    let mut encoded = Vec::new();
+    let mut i = 0;
+
+    if n % 2 != 0 {
+        // Odd length
+        while i < n - 1 {
+            let high = input[i + 1] & 0x0F;
+            let low = input[i] & 0x0F;
+            encoded.push((high << 4) | low);
+            i += 2;
+        }
+        let last = input[n - 1] & 0x0F;
+        encoded.push((0xF0) | last);
+    } else {
+        // Even length
+        while i < n {
+            let high = input[i + 1] & 0x0F;
+            let low = input[i] & 0x0F;
+            encoded.push((high << 4) | low);
+            i += 2;
+        }
+    }
+
+    Ok(encoded)
+}
+
+
+
+fn decode_tbcd(input: &[u8]) -> Result<Vec<u8>, String> {
+    let n = input.len();
+    if n < 6 || n > 9 {
+        return Err("Input length must be between 6 and 9".to_string());
+    }
+
+    let mut decoded = Vec::new();
+
+    for i in 0..n - 1 {
+        let low = (input[i] & 0x0F) + b'0';
+        let high = (input[i] >> 4) + b'0';
+        decoded.push(low);
+        decoded.push(high);
+    }
+
+    let last = input[n - 1];
+    decoded.push((last & 0x0F) + b'0');
+    if (last & 0xF0) != 0xF0 {
+        decoded.push((last >> 4) + b'0');
+    }
+
+    Ok(decoded)
+}
 
 fn send_gtpv2_version_not_supported(
     _peer: Arc<Mutex<Gtpv2Peer>>,
@@ -177,7 +238,8 @@ fn extract_nested_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usiz
 }
 
 
-fn extract_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize, Vec<(u8, usize)>) > {
+fn check_ie_length(raw_data: &[u8], dictionary: &GtpMessage)
+    -> Vec<(u8, usize, Vec<(u8, usize)>) > {
     let mut ies = Vec::new();
     let mut index = 0;
 
@@ -190,8 +252,8 @@ fn extract_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize, Vec<
         }
 
         let ie_value = &raw_data[index+4..index+4+ie_length];
-        let nested_ies = if is_group_ie(ie_type, dictionary) {
-            extract_nested_ies(ie_value, dictionary)
+        let nested_ies = if is_group_ie(ie_type, &dictionary) {
+            extract_nested_ies(ie_value, &dictionary)
         }
         else {
             Vec::new()
@@ -204,6 +266,153 @@ fn extract_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize, Vec<
     ies
 }
 
+#[derive(Debug, Clone)]
+struct LV {
+    // t: u8,
+    l: u16,
+    v: Vec<u8>,
+}
+impl LV {
+    fn new() -> Self {
+        LV{
+            l : 0u16,
+            v : vec![],
+        }
+    }
+}
+
+
+#[derive(Debug, Clone)]
+struct IeMessage {
+    tlvs: HashMap<u8, LV>,
+    // tlvs: Vec<TLV>, // A list of TLVs
+}
+
+impl IeMessage {
+    fn new() -> Self {
+        IeMessage {
+            tlvs: HashMap::new()
+        }
+    }
+}
+
+    pub fn check_ie_value(
+        // session: Arc<Session>,
+        raw_data: &[u8], dictionary: &GtpMessage, teid: u32)
+    -> IeMessage
+{
+
+    // let mut ies = Vec::new();
+    let mut index = 0;
+    let mut table = IeMessage::new();
+    let mut len: usize;
+
+
+    while index + 4 <= raw_data.len() {
+
+        let mut lv = LV::new();
+        lv.l = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]);
+        len = lv.l as usize;
+        println!("Length : {}, Data len : {}", len, raw_data.len());
+
+        lv.v.resize(len, 0);
+        lv.v.copy_from_slice( &raw_data[index+4..index+4+len]);
+        table.tlvs.insert(raw_data[index], lv);
+        index += 4 + len;
+
+    }
+
+    table
+
+    //     let ie_type = raw_data[index];
+    //     let ie_length = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]) as usize;
+    //     let ie_value = 
+
+    //     match ie_type {
+    //         GTPV2C_IE_IMSI => {
+
+    //             // let imsi::<String>.slice_from_raw_parts(raw_data[index+4], ie_length);
+    //             let imsi = ie_value
+    //             .iter()
+    //             .map(|byte| format!("{:02}", byte)) // 각 바이트를 2자리 16진수로 변환
+    //             .collect::<String>();
+
+    //             // session.imsi = imsi;
+    //         }
+    //         _ => println!("Not yet developed"),
+    //     }
+
+    //     if index + 4 + ie_length > raw_data.len() {
+    //         break;
+    //     }
+
+    //     // let ie_value = &raw_data[index+4..index+4+ie_length];
+    //     let nested_ies = if is_group_ie(ie_type, dictionary) {
+    //         extract_nested_ies(ie_value, dictionary)
+    //     }
+    //     else {
+    //         Vec::new()
+    //     };
+
+    //     ies.push((ie_type, ie_length, nested_ies));
+    //     index += 4 + ie_length;
+    // }
+
+    // ies
+}
+
+fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, ies: IeMessage, teid: u32) -> Result < (), String>
+{
+    let imsi;
+    if teid <= 0 { //Initial Attach
+        if let Some(lv) = ies.tlvs.get(&GTPV2C_IE_IMSI) {
+                // IMSI 데이터 복사 없이 참조로 처리
+            match decode_tbcd(&lv.v) {
+                Ok(decoded) => {
+                    // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
+                    imsi = String::from_utf8_lossy(&decoded).into_owned();
+                }
+                Err(_) => return Err("Failed to decode IMSI.".to_string()),
+            }
+        } else {
+            return Err("IMSI IE not found.".to_string());
+        }
+
+        let teid = generate_teid();
+        teid_list.lock().unwrap().add_teid(teid.unwrap(), &imsi);
+        println!("Gernated id: 0x{:x?}", teid);
+
+        match session_list.lock().unwrap().find_session_by_imsi(&imsi) {
+            Some(session) => {
+                let session_locked = session.lock().unwrap();
+                println!("{:?}", session_locked);
+            }
+            _ => {
+                session_list.lock().unwrap().create_session(imsi);
+            }
+        }
+    }
+    else {
+        match teid_list.lock().unwrap().find_session_by_teid(&teid) {
+            Some(session) => {
+                let sess = session.lock().unwrap();
+            },
+            _ => return (Err("Error".to_string())),
+        }
+    }
+
+    Ok(())
+
+}
+
+fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, ies: IeMessage, msg_type: u8, teid: u32) {
+    match msg_type {
+        GTPV2C_CREATE_SESSION_REQ => {
+            recv_crte_sess_req(teid_list, session_list, ies, teid);
+        }
+        _ => {}
+    }
+}
 
 pub fn recv_gtpv2( _data: &[u8],
     // _peer: Arc<Mutex<Gtpv2Peer>>,
@@ -211,41 +420,64 @@ pub fn recv_gtpv2( _data: &[u8],
     // _n: usize,
     // _peerip: u32,
     // _peerport: u16,
-) {
+    session_list: Arc<Mutex<SessionList>>,
+    teid_list: Arc<Mutex<TeidList>>,
+)  -> Result<(), String> {
     // Example function to handle received GTPv2 data
     println!("Processed GTPv2 data.");
     
-    let raw_message: Vec<u8> = vec![ ];
+    // let raw_message: Vec<u8> = vec![ ];
     let hdr_len;
     let rcv_msg_type;
     let msg_define;
+    // let msg_hdr;
+    let mut teid = 0;
+    let mut rcv_seq = 0;
 
-    match parse_header(raw_message.clone()) {
-        Ok( (msg_type, n)) => {
-            rcv_msg_type=msg_type; hdr_len = n; },
-        Err(s) => {
-            println!("{}", s); return; },
-     }
+    // get Header type
+    // let ret = parse_header(raw_message.clone());
+    let ret = parse_header(_data.clone());
+    match ret {
+        Ok( (v, n)) => {
+            // msg_hdr = v;
+            rcv_msg_type = v.t;
+            teid = v.teid;
+            rcv_seq = v.s;
+            hdr_len = n;
+        }
+        //     rcv_msg_type=msg_type; hdr_len = n; ,
+        _ => {
+            return Err(format!("error").to_string());
+        },
+    }
 
+    // Get dictionary based on receive message type
     let dictionary = GTP_DICTIONARY.read().unwrap();
 
     let result = dictionary 
             .iter()
-            .find(|msg| msg.msg_type == rcv_msg_type )
+            .find(|msg | msg.msg_type == rcv_msg_type )
             .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
     
     match result {
         Ok(data) => msg_define = data, 
-        Err(err) => { println!("{}", err); return },
+        Err(err) => { println!("{}", err);
+            return Err(format!("error").to_string());
+        },
     }
 
-    let ies = extract_ies(&raw_message[hdr_len..], msg_define);
-    if let Err(ret) = validate(&ies, msg_define) {
+
+    let ies = check_ie_length(&_data[hdr_len..], &msg_define);
+    if let Err(ret) = validate_length(&ies, &msg_define) {
         println!("Validation Check false: [{}]", ret);
     }
 
-    //validation check완료.
-    // TODO:
+    //get Ie value
+    let ies = check_ie_value(&_data[hdr_len..], &msg_define, teid);
+
+    pgw_recv(teid_list, session_list, ies, rcv_msg_type, teid);
+
+    Ok(())
  
 }
 
@@ -266,7 +498,7 @@ pub fn recv_gtpv2( _data: &[u8],
 
 
 
-pub fn gtpv2_recv_task(socket: UdpSocket) {
+pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>) {
     let mut buf = [0u8; BUFSIZ];
     let timeout = Duration::from_millis(1000);
 
@@ -288,7 +520,7 @@ pub fn gtpv2_recv_task(socket: UdpSocket) {
 
                         Ok(peer) => {
                             // if let Err(_) =
-                            _ = recv_gtpv2(&buf[..nbyte], peer);
+                            _ = recv_gtpv2(&buf[..nbyte], peer, session_list.clone(), teid_list.clone());
                         }
                     }
                 }

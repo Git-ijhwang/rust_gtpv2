@@ -1,4 +1,4 @@
-use crate::gtp_dictionary::{self, *};
+use crate::{gtp_dictionary::{self, *}, Gtpv2CHeader};
 use std::io::Error;
 use core::result::Result;
 use crate::gtpv2_type::*;
@@ -66,7 +66,7 @@ fn validate_group_ie(
 
 // dictionary: &[GtpMessage],
 pub fn
-validate(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMessage)
+validate_length(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMessage)
 -> Result<bool, String> {
 
     // let dictionary = GTP_DICTIONARY.read().unwrap();
@@ -100,18 +100,25 @@ validate(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMessage)
 
 
 pub fn
-parse_header (data: Vec<u8>)  -> Result<(u8, usize), String>
+parse_header (data: &[u8])  ->
+// Result<(u8, usize), String>
+Result<(Gtpv2CHeader, usize), String>
 {
     let mut p : usize = 0;
-    let mut seqnum;
+    let mut teid= 0;
+    let seqnum;
+    println!("data len : {}", data.len());
 
+    let mut hdr = Gtpv2CHeader::new();
     let version = (data[p] & 0xE0) >> 5;
     if version != GTP_VERSION {
         // send_gtpv2_version_not_supported(peer, peerip, peerport, seqnum);
         return Err(format!("Version is not supported {}", version).to_string());
     }
 
+    //get Piggyback flag
     let pflag = (data[p] & GTPV2_P_FLAG) != 0;
+    //get Teid flag
     let tflag = (data[p] & GTPV2_T_FLAG) != 0; p+=1;
 
     // let msg_type_map = make_msg_type_map();
@@ -131,12 +138,36 @@ parse_header (data: Vec<u8>)  -> Result<(u8, usize), String>
     }
 
     if tflag {
+        teid = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]);
         p+=4;
     };
 
     seqnum = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]) >> 8;
+
+    hdr.t = msg_type;
+    hdr.l = msg_len as u16;
+    hdr.teid = teid;
+    hdr.s = seqnum;
+
     p+=4;
 
-    return Ok((msg_type, p));
+    return Ok((hdr, p));
+}
+
+
+pub fn
+get_teid_from_header (data: &[u8])  -> u32
+{
+    let mut p: usize = 0;
+    let mut teid: u32 = 0;
+
+    let tflag = (data[p] & GTPV2_T_FLAG) != 0;
+    p+=4;
+
+    if tflag {
+        teid = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]);
+    };
+
+    return teid;
 }
 

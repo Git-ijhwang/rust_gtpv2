@@ -186,7 +186,7 @@ pub async fn peer_manage()
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let mut peers = GTP2_PEER.lock().unwrap();
-        for (key, peer) in  peers.iter_mut(){
+        for (key, peer) in  peers.iter_mut() {
             // println!("{}, {:?}",key, peer);
             if Instant::now() >= peer.last_echo_snd_time+Duration::from_secs(echo_period) {
                 if peer.status == false {
@@ -207,6 +207,6 @@ pub async fn peer_manage()
                 }
             }
         }
-        break;
+        // break;
     }
 }

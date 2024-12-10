@@ -137,6 +137,110 @@ pub fn create_ie <'a> (p:&'a mut [u8], t:u8, val:u8) -> usize
 }
 
 
+// Get IE
+
+fn gtpv2_get_ie_tv1(data: &[u8], val: &mut u8) -> Result<usize, &'static str> {
+    if data.is_empty() {
+        return Err("Data length is insufficient");
+    }
+    *val = data[0];
+    Ok(1)
+}
+
+fn gtpv2_get_ie_tv2(data: &[u8], val: &mut u16) -> Result<usize, &'static str> {
+    if data.len() < 2 {
+        return Err("Data length is insufficient");
+    }
+    *val = u16::from_be_bytes(data[0..2].try_into().unwrap());
+    Ok(2)
+}
+
+fn gtpv2_get_ie_tv4(data: &[u8], val: &mut u32) -> Result<usize, &'static str> {
+    if data.len() < 4 {
+        return Err("Data length is insufficient");
+    }
+    *val = u32::from_be_bytes(data[0..4].try_into().unwrap());
+    Ok(4)
+}
+
+fn gtpv2_get_ie_tlv(data: &[u8], val: &mut [u8]) -> Result<usize, &'static str> {
+    if data.len() > val.len() {
+        return Err("Destination buffer is too small");
+    }
+    val[..data.len()].copy_from_slice(data);
+    Ok(data.len())
+}
+
+
+pub fn gtpv2_get_ie_under_tv4( data: &[u8],
+    val_1: &mut Option<u8>, val_2: &mut Option<u16>,
+    val_3: &mut Option<u32>, val_4: &mut Option<u32>,
+) -> Result<(), &'static str> {
+    match data.len() {
+        1 => {
+            *val_1 = Some(data[0]);
+        }
+        2 => {
+            *val_2 = Some(u16::from_be_bytes(data[0..2].try_into().unwrap()));
+        }
+        3 => {
+            let mut temp = [0u8; 4];
+            temp[1..4].copy_from_slice(&data[0..3]);
+            *val_3 = Some(u32::from_be_bytes(temp) >> 8);
+        }
+        4 => {
+            *val_4 = Some(u32::from_be_bytes(data[0..4].try_into().unwrap()));
+        }
+        _ => return Err("Invalid data length"),
+    }
+    Ok(())
+}
+
+pub fn gtpv2_get_ie_tbcd(data: &[u8], val: &mut [u8]) -> Result<(), &'static str> {
+    if data.len() > val.len() {
+        return Err("Destination buffer is too small");
+    }
+    _dec_tbcd(data, val.len(), val);
+    Ok(())
+}
+
+// Simulate _dec_tbcd function (you need to replace it with your actual implementation)
+fn _dec_tbcd(data: &[u8], len: usize, val: &mut [u8]) {
+    val[..len].copy_from_slice(&data[..len]);
+}
+
+// pub fn gtpv2_get_ie_cause(data: &[u8], causeie: &mut Gtpv2Error) -> Result<(), &'static str> {
+//     if data.len() < 2 {
+//         return Err("Insufficient data length for cause IE");
+//     }
+//     let mut p = &data[..];
+//     causeie.cause = p[0];
+//     causeie.flags = p[1];
+//     p = &p[2..];
+
+//     if p.len() == 4 {
+//         causeie.offending_ie = Some(OffendingIe {
+//             type_: p[0],
+//             instance: p[3],
+//         });
+//     } else {
+//         causeie.offending_ie = None;
+//     }
+//     Ok(())
+// }
+
+pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(), &'static str> {
+    if data.len() < 8 {
+        return Err("Insufficient data length for MBR");
+    }
+    *up = u32::from_be_bytes(data[0..4].try_into().unwrap());
+    *down = u32::from_be_bytes(data[4..8].try_into().unwrap());
+    Ok(())
+}
+
+
+
+
 pub fn make_gtpv2(msg_type: u8, peer: &mut Peer) {
     let mut buffer: [u8; 1024] = [0; 1024]; 
     let mut len :usize = 0;

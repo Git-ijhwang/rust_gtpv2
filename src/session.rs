@@ -1,47 +1,53 @@
 use rand::Rng;
+use std::hash::Hash;
+use dashmap::DashMap;
 use std::net::Ipv4Addr;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 
-lazy_static::lazy_static! {
-    pub static ref TEID_LIST: Arc<RwLock<TeidList>> = Arc::new(RwLock::new(TeidList::new()));
-}
+// lazy_static::lazy_static! {
+//     pub static ref TEID_LIST: Arc<Mutex<TeidList>> =
+//         Arc::new(Mutex::new(TeidList::new()));
+// }
 
-pub fn generate_teid() -> Option<u32> {
-    let mut rng = rand::thread_rng();
-    Some(rng.gen()) // u32 랜덤 값 생성
-}
+// lazy_static::lazy_static! {
+//     pub static ref SESSION: Arc<RwLock<SessionList>> =
+//         Arc::new( RwLock::new( SessionList::new()));
+// }
 
+
+#[derive(Debug, Clone)]
 pub struct TeidList {
-    teid: Vec<u32>,
+    teid_map: DashMap<u32, Arc<Mutex<String>>>,
 }
+
+
+#[derive(Debug, Clone)]
+pub struct SessionList {
+    sess_map: DashMap<String, Arc<Mutex<Session>>>,
+}
+
 
 impl TeidList {
     pub fn new() -> Self {
         TeidList {
-            teid: vec![0u32; 1024],
+            teid_map: DashMap::new()
         }
     }
 
-    pub fn find_teid(&self, teid: u32) -> bool {
-        for id in &self.teid {
-            if teid == *id {
-                return true;
-            }
-        }
-        return false;
+    pub fn find_session_by_teid(&self, teid: &u32) -> Option<Arc<Mutex<String>>> {
+        self.teid_map.get(teid).map(|entry| Arc::clone(entry.value()))
     }
 
-    pub fn put_teid(& mut self, teid: u32) {
-        if !self.find_teid(teid) {
-            &self.teid.push(teid);
-        }
+    pub fn add_teid(&self, teid: u32, imsi: &str) {
+        self.teid_map.insert(teid, Arc::new(Mutex::new(imsi.to_string())));
+    }
+
+    pub fn del_teid(&self, teid: &u32) {
+        self.teid_map.remove(teid);
     }
 }
 
-lazy_static::lazy_static! {
-    pub static ref SESSION: Mutex<HashMap<String, Session>> = Mutex::new(HashMap::new());
-}
 
 #[derive(Debug, Clone)]
 pub struct bearer_info {
@@ -63,7 +69,6 @@ pub struct bearer_info {
 }
 
 #[derive(Debug, Clone)]
-
 pub struct Session {
     pub imsi:       String,
 	// teid_list_t			s11;		/* MME <-> SGW (GTP-C) */
@@ -82,52 +87,10 @@ pub struct Session {
 }
 
 
-pub struct SessionManager;
-
-impl SessionManager {
-    /// 1. 세션 생성
-    pub fn create_session(imsi: String, teid: u32, ip: Ipv4Addr) -> Result<(), String> {
-        let mut sessions = SESSION.lock().unwrap();
-
-        if sessions.contains_key(&imsi) {
-            return Err(format!("Session with IMSI {} already exists!", imsi));
-        }
-
-        let session = Session::new(imsi.clone());
-        sessions.insert(imsi, session);
-
-        Ok(())
-    }
-
-    /// 2. 세션 중복 체크
-    pub fn session_exists(imsi: &str) -> bool {
-        let sessions = SESSION.lock().unwrap();
-        sessions.contains_key(imsi)
-    }
-
-    /// 3. 세션 삭제
-    pub fn delete_session(imsi: &str) -> Result<(), String> {
-        let mut sessions = SESSION.lock().unwrap();
-
-        if sessions.remove(imsi).is_none() {
-            return Err(format!("Session with IMSI {} not found!", imsi));
-        }
-
-        Ok(())
-    }
-
-    /// 4. 세션 찾기
-    pub fn find_session(imsi: &str) -> Option<Session> {
-        let sessions = SESSION.lock().unwrap();
-        sessions.get(imsi).cloned()
-    }
-}
-
-
 impl Session {
-    pub fn new(imsi: String) -> Self {
+    pub fn new() -> Self {
         Session {
-            imsi,
+            imsi:       String::new(),
             teid:       0,
             bearer:     Vec::with_capacity(4),
             peertype:   0,
@@ -139,3 +102,40 @@ impl Session {
         }
     }
 }
+
+impl SessionList {
+    pub fn new() -> Self {
+        SessionList {
+            sess_map: DashMap::new()
+        }
+    }
+
+    pub fn find_session_by_imsi(&self, imsi: &str) -> Option<Arc<Mutex<Session>>> {
+        self.sess_map.get(imsi).map(|entry| Arc::clone(entry.value()))
+    }
+
+    /*
+    // pub fn mut_session_by_imsi(&self, imsi: &str) -> Option<Arc<Session>> {
+    //     self.sess_map.get_mut(imsi)
+    // }
+    */
+
+    pub fn create_session(&self, imsi:String) {
+        let session = Arc::new(Mutex::new(Session::new()));
+        session.lock().unwrap().imsi = imsi.clone();
+        self.sess_map.insert(imsi,session);
+    }
+
+    pub fn del_session(&self, imsi: &str) {
+        self.sess_map.remove(imsi);
+    }
+}
+
+
+
+
+pub fn generate_teid() -> Option<u32> {
+    let mut rng = rand::thread_rng();
+    Some(rng.gen()) // u32 랜덤 값 생성
+}
+
