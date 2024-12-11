@@ -15,16 +15,19 @@ pub fn add_ip(ip: Ipv4Addr) {
     pool_lock.push_back(ip);
 }
 
+
 pub fn get_ip() -> Ipv4Addr {
     let mut pool_lock = IPPOOL.lock().unwrap();
     let ip = pool_lock.pop_front();
     return ip.unwrap();
 }
 
+
 pub fn print_ippool() {
     let pool_lock = IPPOOL.lock().unwrap();
     println!("IPPOOL: {:#?}", pool_lock);
 }
+
 
 pub fn prepare_ip_pool() {
     let config = CONFIG_MAP.read().unwrap();

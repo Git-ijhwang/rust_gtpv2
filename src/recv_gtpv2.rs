@@ -1,6 +1,7 @@
 use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket, SocketAddr};
 use std::ptr::slice_from_raw_parts;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use core::result::Result;
@@ -13,6 +14,7 @@ use crate::gtpv2_type::*;
 use std::io::Error;
 use crate::peers::*;
 use crate::session::*;
+use crate::ippool::*;
 
 const BUFSIZ: usize = 8192;
 
@@ -380,6 +382,10 @@ pub fn check_ie_value(
 fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, ies: IeMessage, teid: u32) -> Result < (), String>
 {
     let imsi;
+    let msisdn;
+    let mut ebi = 0;
+    let mut address = [Ipv4Addr::new(0,0,0,0); 48];
+
     if let Some(lv) = ies.get_ie(GTPV2C_IE_IMSI) {
         // IMSI 데이터 복사 없이 참조로 처리
     
@@ -395,6 +401,34 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         return Err("IMSI IE not found.".to_string());
     }
 
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_MSISDN) {
+    
+        match decode_tbcd(&lv[0].v) {
+            Ok(decoded) => {
+                // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
+                msisdn = String::from_utf8_lossy(&decoded).into_owned();
+                println!("Extract MSISDN: {}", msisdn);
+            }
+            Err(_) => return Err("Failed to decode MSISDN.".to_string()),
+        }
+    } else {
+        return Err("MSISDN IE not found.".to_string());
+    }
+
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
+        ebi = lv[0].v[0];
+    }
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_FTEID) {
+        for item in lv {
+            let interface_type = item.v[0]&0x3f;
+                // let addr4 = item.v
+            println!("Interface Type: {}", interface_type);
+            address[interface_type as usize] =
+                Ipv4Addr::new( item.v[5], item.v[6], item.v[7], item.v[8]);
+            println!("Address: {:?}", address[interface_type as usize]);
+        }
+    }
+
     if teid == 0 { //Initial Attach
         println!("No TEID");
         let teid = generate_teid();
@@ -403,21 +437,56 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         teid_list.lock().unwrap().add_teid(teid.unwrap(), &imsi);
         println!("Gernated id: 0x{:x?}", teid);
 
-        let locked_session = session_list.lock().unwrap();
-        let session = locked_session.find_session_by_imsi(&imsi);
+        let locked_sessionlist = session_list.lock().unwrap();
+        let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
+        let mut session;
 
-        match session {
-            Some(session) => {
-                let session_locked = session.lock().unwrap();
-                println!("{:?}", session_locked);
+        match locked_session {
+            Some(value) => {
+                session = value;
+                // let session_locked = value.lock().unwrap();
+                // println!("{:?}", session_locked);
             }
             _ => {
                 println!("Create Session");
-                let new = locked_session.create_session(imsi);
-                println!("\t==> {:?}", new);
+                session = locked_sessionlist.create_session(imsi);
+                // println!("\t==> {:?}", new);
+                // session = new;
             }
         }
+
         //Session Setting
+        let ip = get_ip();
+        let mut session = &mut session.lock().unwrap();
+        {
+            session.msisdn = msisdn;
+        }
+        { //PDN
+            let vecpdn = &mut session.pdn;//.iter().any(|pdn_info| pdn_info.used == 0);
+            let pdn_opt = vecpdn.iter_mut().find(|item| item.used == 0);
+            let pdn = match pdn_opt {
+                Some(pdn) => pdn,
+                None => return Err("Error: No unused PDN available".to_string()),
+            };
+
+            pdn.used    = 1;
+            pdn.lbi     = ebi;
+            pdn.ip      = ip;
+        }
+
+        { //Bearer
+            let vecbearer = &mut session.bearer;//.iter().any(|pdn_info| pdn_info.used == 0);
+            let bearer_opt = vecbearer.iter_mut().find(|item| item.used == 0);
+            let bearer = match bearer_opt {
+                Some(bearer) => bearer,
+                None => return Err("Error: No unused Bearer available".to_string()),
+            };
+            bearer.used    = 1;
+            bearer.ebi     = ebi;
+            bearer.lbi     = ebi;
+
+        }
+
     }
     else { // Multiple PDN Attach 
         let locked_session = session_list.lock().unwrap();
@@ -426,9 +495,9 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         match session {
             Some(session) => {
                 let sesion_locked = session.lock().unwrap();
-                if sesion_locked.teid != teid {
+                // if sesion_locked.teid != teid {
                     //Send Reject message
-                }
+                // }
             }
 
             _ => {

@@ -53,18 +53,18 @@ impl TeidList {
 pub struct bearer_info {
     pub used:       u8,
     pub ebi:        u8,
-    pub instance:   u8,
-    pub reserved:   u8,
-    pub pci:        u8,
-    pub pl:         u8,
-    pub pvi:        u8,
-    pub qci:        u8,
-    pub mbr_up:     u32,
-    pub mbr_down:   u32,
-    pub gbr_up:     u32,
-    pub gbr_down:   u32,
+    pub lbi:        u8,
     pub teid:       u32,
-    // s1_u: teid_info_t /* MME <-> SGW (GTP-U) */
+    // pub instance:   u8,
+    // pub reserved:   u8,
+    // pub pci:        u8,
+    // pub pl:         u8,
+    // pub pvi:        u8,
+    // pub qci:        u8,
+    // pub mbr_up:     u32,
+    // pub mbr_down:   u32,
+    // pub gbr_up:     u32,
+    // pub gbr_down:   u32,
     // s5_u: teid_info_t /* SGW <-> PGW (GTP-U) */
 }
 
@@ -76,14 +76,20 @@ pub struct pdn_info {
     pub ip:          Ipv4Addr,
 }
 
+#[derive(Debug, Clone)]
+struct gtpc_intface {
+    teid:   u32,
+    addr:   Ipv4Addr,
+}
 
 #[derive(Debug, Clone)]
 pub struct Session {
     pub imsi:       String,
+    pub msisdn:     String,
 	// teid_list_t			s11;		/* MME <-> SGW (GTP-C) */
 	// teid_list_t			s5;			/* SGW <-> PGW (GTP-C) */
 
-    pub teid:       u32,
+    pub ctl_interface:       Vec<gtpc_intface>,
     pub bearer:     Vec<bearer_info>,
     pub pdn:        Vec<pdn_info>,
 
@@ -101,8 +107,9 @@ impl Session {
     pub fn new() -> Self {
         Session {
             imsi:       String::new(),
-            teid:       0,
-            bearer:     Vec::with_capacity(4),
+            msisdn:     String::new(),
+            ctl_interface:       Vec::with_capacity(4),
+            bearer:     Vec::with_capacity(11),
             pdn:        Vec::with_capacity(3),
             peertype:   0,
             status:     0, 
