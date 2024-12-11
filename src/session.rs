@@ -68,6 +68,15 @@ pub struct bearer_info {
     // s5_u: teid_info_t /* SGW <-> PGW (GTP-U) */
 }
 
+
+#[derive(Debug, Clone)]
+pub struct pdn_info {
+    pub used:        u8,
+    pub lbi:         u8,
+    pub ip:          Ipv4Addr,
+}
+
+
 #[derive(Debug, Clone)]
 pub struct Session {
     pub imsi:       String,
@@ -76,6 +85,7 @@ pub struct Session {
 
     pub teid:       u32,
     pub bearer:     Vec<bearer_info>,
+    pub pdn:        Vec<pdn_info>,
 
     pub peertype:   u8,
     pub status:     u8,
@@ -93,6 +103,7 @@ impl Session {
             imsi:       String::new(),
             teid:       0,
             bearer:     Vec::with_capacity(4),
+            pdn:        Vec::with_capacity(3),
             peertype:   0,
             status:     0, 
             seqnum:     0, 
@@ -120,10 +131,12 @@ impl SessionList {
     // }
     */
 
-    pub fn create_session(&self, imsi:String) {
-        let session = Arc::new(Mutex::new(Session::new()));
+    pub fn create_session(&self, imsi:String) -> Arc<Mutex<Session>> {
+        let mut session = Arc::new(Mutex::new(Session::new()));
         session.lock().unwrap().imsi = imsi.clone();
-        self.sess_map.insert(imsi,session);
+        self.sess_map.insert(imsi,session.clone());
+
+        session
     }
 
     pub fn del_session(&self, imsi: &str) {

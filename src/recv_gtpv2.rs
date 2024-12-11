@@ -270,13 +270,15 @@ fn check_ie_length(raw_data: &[u8], dictionary: &GtpMessage)
 struct LV {
     // t: u8,
     l: u16,
+    i: u8,
     v: Vec<u8>,
 }
 impl LV {
     fn new() -> Self {
         LV{
-            l : 0u16,
-            v : vec![],
+            l : 0u16, //length
+            i : 0u8,  //instance
+            v : vec![], //value
         }
     }
 }
@@ -284,7 +286,7 @@ impl LV {
 
 #[derive(Debug, Clone)]
 struct IeMessage {
-    tlvs: HashMap<u8, LV>,
+    tlvs: HashMap<u8, Vec<LV>>,
     // tlvs: Vec<TLV>, // A list of TLVs
 }
 
@@ -294,11 +296,20 @@ impl IeMessage {
             tlvs: HashMap::new()
         }
     }
+
+    fn add_ie(&mut self, id: u8, lv: LV) {
+        // IE ID에 대해 기존 벡터가 없으면 새로 생성
+        self.tlvs.entry(id).or_insert_with(Vec::new).push(lv);
+    }
+
+    fn get_ie(&self, id: u8) -> Option<&Vec<LV>> {
+        self.tlvs.get(&id)
+    }
 }
 
-    pub fn check_ie_value(
+pub fn check_ie_value(
         // session: Arc<Session>,
-        raw_data: &[u8], dictionary: &GtpMessage, teid: u32)
+    raw_data: &[u8], dictionary: &GtpMessage, teid: u32)
     -> IeMessage
 {
 
@@ -311,15 +322,20 @@ impl IeMessage {
     while index + 4 <= raw_data.len() {
 
         let mut lv = LV::new();
+        let t = raw_data[index];
+        if t == 93 {
+            index += 4;
+            continue;
+        }
+
         lv.l = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]);
+        lv.i = raw_data[index + 3] & 0x0f;
         len = lv.l as usize;
-        println!("Length : {}, Data len : {}", len, raw_data.len());
 
         lv.v.resize(len, 0);
         lv.v.copy_from_slice( &raw_data[index+4..index+4+len]);
-        table.tlvs.insert(raw_data[index], lv);
+        table.add_ie( t, lv);
         index += 4 + len;
-
     }
 
     table
@@ -364,35 +380,61 @@ impl IeMessage {
 fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, ies: IeMessage, teid: u32) -> Result < (), String>
 {
     let imsi;
-    if teid <= 0 { //Initial Attach
-        if let Some(lv) = ies.tlvs.get(&GTPV2C_IE_IMSI) {
-                // IMSI 데이터 복사 없이 참조로 처리
-            match decode_tbcd(&lv.v) {
-                Ok(decoded) => {
-                    // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
-                    imsi = String::from_utf8_lossy(&decoded).into_owned();
-                }
-                Err(_) => return Err("Failed to decode IMSI.".to_string()),
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_IMSI) {
+        // IMSI 데이터 복사 없이 참조로 처리
+    
+        match decode_tbcd(&lv[0].v) {
+            Ok(decoded) => {
+                // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
+                imsi = String::from_utf8_lossy(&decoded).into_owned();
+                println!("Extract IMSI: {}", imsi);
             }
-        } else {
-            return Err("IMSI IE not found.".to_string());
+            Err(_) => return Err("Failed to decode IMSI.".to_string()),
         }
+    } else {
+        return Err("IMSI IE not found.".to_string());
+    }
 
+    if teid == 0 { //Initial Attach
+        println!("No TEID");
         let teid = generate_teid();
+        println!("Teid Generated : {:?}", teid);
+
         teid_list.lock().unwrap().add_teid(teid.unwrap(), &imsi);
         println!("Gernated id: 0x{:x?}", teid);
 
-        match session_list.lock().unwrap().find_session_by_imsi(&imsi) {
+        let locked_session = session_list.lock().unwrap();
+        let session = locked_session.find_session_by_imsi(&imsi);
+
+        match session {
             Some(session) => {
                 let session_locked = session.lock().unwrap();
                 println!("{:?}", session_locked);
             }
             _ => {
-                session_list.lock().unwrap().create_session(imsi);
+                println!("Create Session");
+                let new = locked_session.create_session(imsi);
+                println!("\t==> {:?}", new);
             }
         }
     }
-    else {
+    else { // Multiple PDN Attach 
+        let locked_session = session_list.lock().unwrap();
+        let session = locked_session.find_session_by_imsi(&imsi);
+
+        match session {
+            Some(session) => {
+                let sesion_locked = session.lock().unwrap();
+                if sesion_locked.teid != teid {
+                    //Send Reject message
+                }
+            }
+
+            _ => {
+            }
+        }
+
+
         match teid_list.lock().unwrap().find_session_by_teid(&teid) {
             Some(session) => {
                 let sess = session.lock().unwrap();
@@ -474,6 +516,7 @@ pub fn recv_gtpv2( _data: &[u8],
 
     //get Ie value
     let ies = check_ie_value(&_data[hdr_len..], &msg_define, teid);
+    println!("{:?}", ies.clone());
 
     pgw_recv(teid_list, session_list, ies, rcv_msg_type, teid);
 
