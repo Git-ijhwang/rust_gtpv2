@@ -58,43 +58,6 @@ impl ConfigMap
     }
 }
 
-// pub fn read_conf_test(path: &str, peer: bool)
-// ->// Option<
-// RwLockWriteGuard<'_,
-// ConfigMap>
-// // >
-// {
-//     let mut config: Option<RwLockWriteGuard<'_, ConfigMap>> = None;
-//     let key = String::from("test");
-//     let value = String::from("test1");
-
-//     config = Some(CONFIG_MAP.write().unwrap());
-
-//     if let Some(config) = config.as_mut() {
-//         config.insert(key, value);
-//     }
-//     config.unwrap()
-// }
-
-// fn parse_str(input: &str)
-// -> Result<i32, ParseIntError>
-// {
-//     let parsed_number = input.parse::<i32>()?; //실패하면 error return
-//     println!("Parse success");
-//     Ok(parsed_number) //parse()가 성공하면 수행
-// }
-
-
-// fn red_conf (path: &str, peer: bool)
-// -> Result<i32, ParseIntError>
-// // -> Error
-// {
-
-//     let mut config: Option<RwLockWriteGuard<'_, ConfigMap>> = None;
-//     let file = File::open(path)?;
-
-
-// }
 
 pub fn read_conf (path: &str, peer: bool)
         -> Result<(), Error>

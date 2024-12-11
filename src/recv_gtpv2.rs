@@ -417,6 +417,7 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
                 println!("\t==> {:?}", new);
             }
         }
+        //Session Setting
     }
     else { // Multiple PDN Attach 
         let locked_session = session_list.lock().unwrap();

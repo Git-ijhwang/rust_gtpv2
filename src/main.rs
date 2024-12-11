@@ -9,6 +9,7 @@ mod gtp_dictionary;
 mod recv_gtpv2;
 mod validate_gtpv2;
 mod peers;
+mod ippool;
 mod session;
 
 use std::sync::{Arc, RwLock, Mutex};
@@ -23,6 +24,7 @@ use crate::udpsock::*;
 use crate::recv_gtpv2::*;
 use crate::gtp_dictionary::*;
 use crate::session::*;
+use crate::ippool::*;
 use std::net::AddrParseError;
 use thiserror::Error;
 
@@ -57,6 +59,7 @@ async fn main() -> Result<(), Error>
     }
 
     create_peer();
+    prepare_ip_pool();
 
     let session_list = Arc::new(Mutex::new(SessionList::new()));
     let teid_list = Arc::new(Mutex::new(TeidList::new()));
