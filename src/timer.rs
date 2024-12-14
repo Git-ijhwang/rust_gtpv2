@@ -75,7 +75,7 @@ pub struct EncapPkt {
     pub expiry:     Duration,   // duration time in Sec
     pub send_count: u32,
     pub datalen:    usize,
-    pub data:       [u8; 1024],
+    pub data:       Arc<[u8]>,
 }
 
 impl Clone for EncapPkt {
@@ -87,77 +87,93 @@ impl Clone for EncapPkt {
             send_time:  self.send_time,
             send_count: self.send_count,
             datalen:    self.datalen,
-            data:       self.data,
+            data:       Arc::clone(&self.data),
         }
     }
 }
 
 impl EncapPkt {
-    pub fn new(index: Ipv4Addr, msg_type: u8) -> Self {
+    pub fn new(index: Ipv4Addr, msg_type: u8, data: Vec<u8>) -> Self {
+        let datalen = data.len();
         EncapPkt {
             peer_index: index,
-            msg_type:   msg_type,
+            msg_type,
             send_time:  Instant::now(),
             expiry:     Duration::new(3, 0),
             send_count: 1,
-            datalen:    0,
-            data:       [0u8; 1024],
+            datalen,
+            data:       Arc::from(data.into_boxed_slice()),
         }
     }
 
-    pub fn copy_data(&mut self, org: &[u8], len:usize ) {
-        self.data[..len].copy_from_slice(&org[..len]);
+    // pub fn copy_data(&mut self, org: &[u8], len:usize ) {
+    //     self.data[..len].copy_from_slice(&org[..len]);
+    // }
+
+    // pub fn put_que (&self, queue: &mut MsgQue) {
+    //     queue.push(self.clone());
+    // }
+
+    pub fn update_send_time(&mut self) {
+        self.send_time = Instant::now();
     }
 
-    pub fn put_que (&self, queue: &mut MsgQue) {
-        queue.push(self.clone());
+    pub fn increment_send_count(&mut self) {
+        self.send_count += 1;
+    }
+
+    pub fn is_expired(&self) -> bool {
+        Instant::now().duration_since(self.send_time) > self.expiry
     }
 }
 
 
+lazy_static::lazy_static! {
+    pub static ref SHARED_QUEUE: Arc<Mutex<MsgQue>> = Arc::new(Mutex::new(MsgQue::new()));
+}
+
 pub struct MsgQue {
-    queue: Arc<Mutex<VecDeque<EncapPkt>>>,
+    queue: VecDeque<EncapPkt>,
 }
 
 impl MsgQue  {
     pub fn new() -> Self {
         MsgQue {
-            queue: Arc::new(Mutex::new( VecDeque::new())),
+            queue: VecDeque::new(),
         }
     }
 
     pub fn rm_peer(&mut self, value: Ipv4Addr) {
-        let mut queue = self.queue.lock().unwrap();
-        queue.retain(|item| item.peer_index != value);
+        self.queue.retain(|item| item.peer_index != value);
     }
 
     pub fn push(&mut self, value: EncapPkt) {
-        self.queue.lock().unwrap().push_back(value);
+        self.queue.push_back(value);
     }
 
     pub fn pop(&mut self) -> EncapPkt {
-        self.queue.lock().unwrap().pop_front().unwrap()
+        self.queue.pop_front().unwrap()
     }
 
     pub fn que_print(self) {
-        let queue = self.queue.lock().unwrap();
-        for x in queue.iter() {
+        // let queue = self.queue;
+        for x in &self.queue {
             println!("{:?}", x.data);
         }
 
     }
 
     pub async fn check_timer (&mut self ) {
-        let mut expired = vec![]; //for expired timer
+        let mut expired = vec![];
+
 
         loop {
             tokio::time::sleep(Duration::from_millis(100)).await; //sleep 100ms
 
             let now = tokio::time::Instant::now();
 
-            {
-                let mut queue = self.queue.lock().unwrap();
-                for x in queue.iter_mut() {
+                // let mut queue = self.queue.lock().unwrap();
+                for x in self.queue.iter_mut() {
             // queue.iter_mut().for_each( |x: &mut EncapPkt| 
                     if now.duration_since(x.send_time) > x.expiry {
                         if x.send_count <= 3  {
@@ -174,7 +190,6 @@ impl MsgQue  {
                         }
                     }
                 }
-            }
 
             for item in &mut expired {
                 let mut peer = get_peer(&item.peer_index).unwrap();

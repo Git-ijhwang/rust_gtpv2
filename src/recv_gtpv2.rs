@@ -406,12 +406,8 @@ pub fn check_ie_value(
 
 pub fn interface_type_map(interface_type: u8) -> u8 {
     match interface_type {
-        0..=5 | 15 | 16 | 19..=23 | 29 | 31 | 33 | 34 | 37..=39 | 41 => {
-            0
-        }
-        6..=14 | 17 | 18 | 24..=28 | 30 | 32 | 35 | 36 | 40 => {
-            1
-        }
+        0..=5 | 15 | 16 | 19..=23 | 29 | 31 | 33 | 34 | 37..=39 | 41 => { 0 }
+        6..=14 | 17 | 18 | 24..=28 | 30 | 32 | 35 | 36 | 40 => { 1 }
         _ => {
             println!("Unknown interface type");
             255 // 반환값으로 알 수 없는 타입을 명시
@@ -611,6 +607,7 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
     Ok(())
 }
 
+
 fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32) {
     match msg_type {
         GTPV2C_CREATE_SESSION_REQ => {
@@ -620,38 +617,27 @@ fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList
     }
 }
 
-pub fn recv_gtpv2( _data: &[u8],
-    // _peer: Arc<Mutex<Gtpv2Peer>>,
-    peer: &mut Peer,
-    // _n: usize,
-    // _peerip: u32,
-    // _peerport: u16,
+
+pub fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
     session_list: Arc<Mutex<SessionList>>,
     teid_list: Arc<Mutex<TeidList>>,
 )  -> Result<(), String> {
-    // Example function to handle received GTPv2 data
     println!("Processed GTPv2 data.");
     
-    // let raw_message: Vec<u8> = vec![ ];
     let hdr_len;
     let rcv_msg_type;
     let msg_define;
-    // let msg_hdr;
     let mut teid = 0;
     let mut rcv_seq = 0;
 
-    // get Header type
-    // let ret = parse_header(raw_message.clone());
     let ret = parse_header(_data.clone());
     match ret {
         Ok( (v, n)) => {
-            // msg_hdr = v;
             rcv_msg_type = v.t;
-            teid = v.teid;
-            rcv_seq = v.s;
-            hdr_len = n;
+            teid         = v.teid;
+            rcv_seq      = v.s;
+            hdr_len      = n;
         }
-        //     rcv_msg_type=msg_type; hdr_len = n; ,
         _ => {
             return Err(format!("error").to_string());
         },
@@ -678,14 +664,12 @@ pub fn recv_gtpv2( _data: &[u8],
         println!("Validation Check false: [{}]", ret);
     }
 
-    //get Ie value
+    //get IE value
     let ies = check_ie_value(&_data[hdr_len..], &msg_define, teid);
-    // println!("{:?}", ies.clone());
 
     pgw_recv(teid_list, session_list, peer, ies, rcv_msg_type, teid);
 
     Ok(())
- 
 }
 
 

@@ -1,12 +1,13 @@
 extern crate lazy_static;
-use tokio::time::{self, Duration};
+// use tokio::time::{self, Duration};
 use std::sync::{Arc, Mutex};
-use crate::{find_dictionary, gtpv2_type::*, GTP_DICTIONARY};
-use tokio::sync::mpsc::{Receiver, Sender};
+use crate::gtpv2_type::*;
+// use crate::recv_gtpv2::*;
+// use tokio::sync::mpsc::{Receiver, Sender};
 use crate::peers::*;
 use crate::session::*;
 use crate::gtpv2_send::*;
-
+use crate::timer::*;
 
 
 // #[derive(Debug, Clone, Copy)]
@@ -37,7 +38,7 @@ impl Gtpv2CHeader {
     pub fn encode<'a> (p:&'a mut [u8], p_flag: bool,
             t_flag: bool, mp_flag: bool, t: u8,
             l: u16, teid: u32, s: u32, mp: u8)
-            -> (&[u8], usize)
+    -> (&[u8], usize)
     {
 
         let mut v = (GTP_VERSION & 0b111) << 5; // Version은 상위 3비트
@@ -80,6 +81,7 @@ impl Gtpv2CHeader {
     }
 
 }
+
 
 /* GTPv2 IE */
 pub struct gtpv2c_ie1 {
@@ -125,7 +127,7 @@ struct gtpv2c_ie_tlv {
     l:			u16, /* length (2octet) */
     i:			u8, /* spare (4bit) + instance (4bit) */
 }
-    /* value is variable lentgh */
+
 
 pub fn create_ie <'a> (p:&'a mut [u8], t:u8, val:u8) -> usize
 {
@@ -143,7 +145,6 @@ pub fn create_ie <'a> (p:&'a mut [u8], t:u8, val:u8) -> usize
 }
 
 
-// Get IE
 
 fn gtpv2_get_ie_tv1(data: &[u8], val: &mut u8) -> Result<usize, &'static str> {
     if data.is_empty() {
@@ -153,6 +154,7 @@ fn gtpv2_get_ie_tv1(data: &[u8], val: &mut u8) -> Result<usize, &'static str> {
     Ok(1)
 }
 
+
 fn gtpv2_get_ie_tv2(data: &[u8], val: &mut u16) -> Result<usize, &'static str> {
     if data.len() < 2 {
         return Err("Data length is insufficient");
@@ -160,6 +162,7 @@ fn gtpv2_get_ie_tv2(data: &[u8], val: &mut u16) -> Result<usize, &'static str> {
     *val = u16::from_be_bytes(data[0..2].try_into().unwrap());
     Ok(2)
 }
+
 
 fn gtpv2_get_ie_tv4(data: &[u8], val: &mut u32) -> Result<usize, &'static str> {
     if data.len() < 4 {
@@ -202,13 +205,17 @@ pub fn gtpv2_get_ie_under_tv4( data: &[u8],
     Ok(())
 }
 
-pub fn gtpv2_get_ie_tbcd(data: &[u8], val: &mut [u8]) -> Result<(), &'static str> {
+
+pub fn gtpv2_get_ie_tbcd(data: &[u8], val: &mut [u8])
+-> Result<(), &'static str> {
     if data.len() > val.len() {
         return Err("Destination buffer is too small");
     }
+
     _dec_tbcd(data, val.len(), val);
     Ok(())
 }
+
 
 // Simulate _dec_tbcd function (you need to replace it with your actual implementation)
 fn _dec_tbcd(data: &[u8], len: usize, val: &mut [u8]) {
@@ -241,10 +248,9 @@ pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(),
     }
     *up = u32::from_be_bytes(data[0..4].try_into().unwrap());
     *down = u32::from_be_bytes(data[4..8].try_into().unwrap());
+
     Ok(())
 }
-
-
 
 
 pub fn make_gtpv2(msg_type: u8, body: &[u8;1024],
@@ -265,9 +271,14 @@ pub fn make_gtpv2(msg_type: u8, body: &[u8;1024],
         t_flag, false,
         msg_type, bodylen, oldpeer.teid, peer.tseq, 0) ;
 
-    buffer[length..length+len as usize].copy_from_slice(&body[..len as usize]);
+    buffer[length..length + len as usize].copy_from_slice(&body[..len as usize]);
 
-    println!("Whole Message: {}+{} -- {:x?}",length, len, &buffer[..length+len as usize]);
+    let pkt = EncapPkt::new(peer.ip, msg_type, buffer[..length + len as usize].to_vec());
+
+    send_udp_data(&buffer[..length+len as usize], &peer.ip.to_string(), peer.port);
+
+    SHARED_QUEUE.lock().unwrap().push(pkt);
+
 
     peer.update_last_echo_snd_time();
     peer.increase_count();
@@ -315,7 +326,6 @@ pub fn gtp_send_create_session_response
     //Make GTPv2 Header
     make_gtpv2(GTPV2C_CREATE_SESSION_RSP, &buffer, peer, true, total_len as u8);
 
-
     Ok(())
 }
 
@@ -348,7 +358,7 @@ pub fn gtp_send_modify_bearer_response
     //IE Recovery
 
     //Make GTPv2 Header
-    make_gtpv2(GTPV2C_MODIFY_BEARER_RSP, &buffer, peer, true, total_len as u8);
+    // make_gtpv2(GTPV2C_MODIFY_BEARER_RSP, &buffer, peer, true, total_len as u8);
 
 
     Ok(())
@@ -378,7 +388,7 @@ pub fn gtp_send_delete_session_request
     //IE PCO
 
     //Make GTPv2 Header
-    make_gtpv2(GTPV2C_DELETE_SESSION_RSP, &buffer, peer, true, total_len as u8);
+    // make_gtpv2(GTPV2C_DELETE_SESSION_RSP, &buffer, peer, true, total_len as u8);
 
     Ok(())
 }
