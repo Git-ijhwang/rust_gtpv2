@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use crate::gtp_dictionary::{self, *};
 use crate::validate_gtpv2::*;
 use crate::gtpv2_type::*;
+use crate::gtp_msg::*;
 use std::io::Error;
 use crate::peers::*;
 use crate::session::*;
@@ -23,6 +24,29 @@ struct Gtpv2Peer {
     ipaddr: u32,
     status: u8,
 }
+
+
+struct BearerQos {
+    flag:   u8,
+    qci:    u8,
+    mbr_ul: u32,
+    mbr_dl: u32,
+    gbr_ul: u32,
+    gbr_dl: u32,
+}
+impl BearerQos {
+    fn new() -> Self {
+        BearerQos {
+            flag: 0,
+            qci: 0,
+            mbr_ul: 0,
+            mbr_dl: 0,
+            gbr_ul: 0,
+            gbr_dl: 0,
+        }
+    }
+}
+
 
 // #[derive(Debug, Clone, Copy)]
 struct Gtpv2IeDetailInfo {
@@ -379,11 +403,29 @@ pub fn check_ie_value(
     // ies
 }
 
-fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, ies: IeMessage, teid: u32) -> Result < (), String>
+
+pub fn interface_type_map(interface_type: u8) -> u8 {
+    match interface_type {
+        0..=5 | 15 | 16 | 19..=23 | 29 | 31 | 33 | 34 | 37..=39 | 41 => {
+            0
+        }
+        6..=14 | 17 | 18 | 24..=28 | 30 | 32 | 35 | 36 | 40 => {
+            1
+        }
+        _ => {
+            println!("Unknown interface type");
+            255 // 반환값으로 알 수 없는 타입을 명시
+        }
+    }
+}
+
+fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, peer: & mut Peer, ies: IeMessage, teid: u32)
+-> Result < (), String>
 {
     let imsi;
     let msisdn;
     let mut ebi = 0;
+    let mut pdn_index:u32 = 0;
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
     if let Some(lv) = ies.get_ie(GTPV2C_IE_IMSI) {
@@ -393,7 +435,6 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
             Ok(decoded) => {
                 // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
                 imsi = String::from_utf8_lossy(&decoded).into_owned();
-                println!("Extract IMSI: {}", imsi);
             }
             Err(_) => return Err("Failed to decode IMSI.".to_string()),
         }
@@ -407,7 +448,6 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
             Ok(decoded) => {
                 // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
                 msisdn = String::from_utf8_lossy(&decoded).into_owned();
-                println!("Extract MSISDN: {}", msisdn);
             }
             Err(_) => return Err("Failed to decode MSISDN.".to_string()),
         }
@@ -418,74 +458,129 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
     if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
         ebi = lv[0].v[0];
     }
+
+    let mut gtpc_interfaces = vec![control_info::new()];
+    let mut gtpu_interfaces = vec![control_info::new()];
     if let Some(lv) = ies.get_ie(GTPV2C_IE_FTEID) {
         for item in lv {
-            let interface_type = item.v[0]&0x3f;
-                // let addr4 = item.v
-            println!("Interface Type: {}", interface_type);
-            address[interface_type as usize] =
-                Ipv4Addr::new( item.v[5], item.v[6], item.v[7], item.v[8]);
-            println!("Address: {:?}", address[interface_type as usize]);
+            let mut info  = control_info::new();
+
+            info.interface_type = item.v[0] & 0x3f;
+            info.teid = u32::from_be_bytes( item.v[1..5].try_into().expect("convert to teid problem") );
+            info.addr = Ipv4Addr::new( item.v[5], item.v[6], item.v[7], item.v[8]);
+
+            if peer.ip != info.addr {
+                return Err("Unknown interface type.".to_string());
+            }
+
+            if info.interface_type == 6 {
+                peer.teid = info.teid;
+            }
+
+            if interface_type_map(info.interface_type) == 0 {
+                gtpc_interfaces.push(info);
+            }
+            else if interface_type_map(info.interface_type) == 1 {
+                gtpu_interfaces.push(info);
+            }
         }
     }
 
+    let mut apn = String::new();
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_APN) {
+        if lv[0].v.len() > 0{
+            let ret = String::from_utf8(lv[0].v.clone());
+            match ret {
+                Ok(val) => apn = val,
+                Err(_) => return Err("Failed to decode IMSI.".to_string()),
+            }
+        }
+    }
+
+    let mut ambr_ul:u32 = 0;
+    let mut ambr_dl:u32 = 0;
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_AMBR) {
+        ambr_ul = u32::from_be_bytes( lv[0].v[0..4].try_into().expect("convert to ambr_ul problem"));
+        ambr_dl = u32::from_be_bytes( lv[0].v[4..8].try_into().expect("convert to ambr_ul problem"));
+    }
+
+    let mut bearer_qos = BearerQos::new();
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_BEARER_QOS) {
+        for item in lv {
+            bearer_qos.flag   = item.v[0];
+            bearer_qos.qci    = item.v[1];
+            bearer_qos.mbr_ul = u32::from_be_bytes( item.v[2..6].try_into().expect("convert to mbr_ul problem"));
+            bearer_qos.mbr_dl = u32::from_be_bytes( item.v[6..10].try_into().expect("convert to mbr_dl problem"));
+            bearer_qos.gbr_ul = u32::from_be_bytes( item.v[10..14].try_into().expect("convert to gbr_ul problem"));
+            bearer_qos.gbr_dl = u32::from_be_bytes( item.v[14..18].try_into().expect("convert to gbr_dl problem"));
+        }
+    }
+
+
     if teid == 0 { //Initial Attach
-        println!("No TEID");
         let teid = generate_teid();
-        println!("Teid Generated : {:?}", teid);
 
         teid_list.lock().unwrap().add_teid(teid.unwrap(), &imsi);
-        println!("Gernated id: 0x{:x?}", teid);
 
         let locked_sessionlist = session_list.lock().unwrap();
         let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
-        let mut session;
+        let arc_session;
 
         match locked_session {
             Some(value) => {
-                session = value;
-                // let session_locked = value.lock().unwrap();
-                // println!("{:?}", session_locked);
+                arc_session = value;
             }
             _ => {
-                println!("Create Session");
-                session = locked_sessionlist.create_session(imsi);
-                // println!("\t==> {:?}", new);
-                // session = new;
+                arc_session = locked_sessionlist.create_session(imsi.clone());
             }
         }
 
         //Session Setting
-        let ip = get_ip();
-        let mut session = &mut session.lock().unwrap();
         {
+            let mut session = &mut arc_session.lock().unwrap();
             session.msisdn = msisdn;
         }
-        { //PDN
-            let vecpdn = &mut session.pdn;//.iter().any(|pdn_info| pdn_info.used == 0);
-            let pdn_opt = vecpdn.iter_mut().find(|item| item.used == 0);
-            let pdn = match pdn_opt {
-                Some(pdn) => pdn,
-                None => return Err("Error: No unused PDN available".to_string()),
-            };
 
-            pdn.used    = 1;
-            pdn.lbi     = ebi;
-            pdn.ip      = ip;
+        let alloc_ip = allocate_ip();
+        { //PDN
+            let session = &mut arc_session.lock().unwrap();
+            let  vecpdn = &mut session.pdn;//.iter().any(|pdn_info| pdn_info.used == 0);
+
+            pdn_index = vecpdn.len() as u32;
+            if pdn_index < 3 {
+                let mut pdn : pdn_info = pdn_info::new();
+                pdn.used    = true;
+                pdn.lbi     = ebi;
+                pdn.ip      = alloc_ip;
+                pdn.ambr_dl = ambr_dl;
+                pdn.ambr_ul = ambr_ul;
+                pdn.apn     = apn;
+
+                vecpdn.push(pdn);
+            }
+            pdn_index = vecpdn.len() as u32;
         }
 
         { //Bearer
-            let vecbearer = &mut session.bearer;//.iter().any(|pdn_info| pdn_info.used == 0);
-            let bearer_opt = vecbearer.iter_mut().find(|item| item.used == 0);
-            let bearer = match bearer_opt {
-                Some(bearer) => bearer,
-                None => return Err("Error: No unused Bearer available".to_string()),
-            };
-            bearer.used    = 1;
-            bearer.ebi     = ebi;
-            bearer.lbi     = ebi;
+            let session = &mut arc_session.lock().unwrap();
+            let vecbearer = &mut session.bearer;
 
+            let new_bearer = bearer_info::new(
+                true, ebi, ebi, gtpu_interfaces[0].teid,
+                bearer_qos.flag, bearer_qos.qci,
+                bearer_qos.mbr_ul, bearer_qos.mbr_dl,
+                bearer_qos.gbr_ul, bearer_qos.gbr_dl);
+
+            vecbearer.push(new_bearer);
         }
+
+        {
+            let session = &mut arc_session.lock().unwrap();
+            session.control = gtpc_interfaces;
+        }
+
+        drop(locked_sessionlist);
+        gtp_send_create_session_response(session_list.clone(), peer.clone(), &imsi.clone(), pdn_index as usize);
 
     }
     else { // Multiple PDN Attach 
@@ -509,18 +604,17 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
             Some(session) => {
                 let sess = session.lock().unwrap();
             },
-            _ => return (Err("Error".to_string())),
+            _ => return Err("Error".to_string()),
         }
     }
 
     Ok(())
-
 }
 
-fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, ies: IeMessage, msg_type: u8, teid: u32) {
+fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32) {
     match msg_type {
         GTPV2C_CREATE_SESSION_REQ => {
-            recv_crte_sess_req(teid_list, session_list, ies, teid);
+            recv_crte_sess_req(teid_list, session_list, peer, ies, teid);
         }
         _ => {}
     }
@@ -528,7 +622,7 @@ fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList
 
 pub fn recv_gtpv2( _data: &[u8],
     // _peer: Arc<Mutex<Gtpv2Peer>>,
-    peer: Peer,
+    peer: &mut Peer,
     // _n: usize,
     // _peerip: u32,
     // _peerport: u16,
@@ -586,9 +680,9 @@ pub fn recv_gtpv2( _data: &[u8],
 
     //get Ie value
     let ies = check_ie_value(&_data[hdr_len..], &msg_define, teid);
-    println!("{:?}", ies.clone());
+    // println!("{:?}", ies.clone());
 
-    pgw_recv(teid_list, session_list, ies, rcv_msg_type, teid);
+    pgw_recv(teid_list, session_list, peer, ies, rcv_msg_type, teid);
 
     Ok(())
  
@@ -623,17 +717,18 @@ pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>,
         match socket.recv_from(&mut buf) {
             Ok((nbyte, addr)) => {
                 if let SocketAddr::V4(addr) = addr {
-                    let sin_addr = addr.ip();
+                    // let sin_addr = addr.ip();
                     let sin_port = addr.port();
 
+                    /* TEST */
+                    let sin_addr = &Ipv4Addr::new(10,10,1,71);
                     match get_peer(sin_addr) {
                         Err(_) => {
                             println!("This is not registered PEER!");
                         } 
 
-                        Ok(peer) => {
-                            // if let Err(_) =
-                            _ = recv_gtpv2(&buf[..nbyte], peer, session_list.clone(), teid_list.clone());
+                        Ok(mut peer) => {
+                            _ = recv_gtpv2(&buf[..nbyte], &mut peer, session_list.clone(), teid_list.clone());
                         }
                     }
                 }

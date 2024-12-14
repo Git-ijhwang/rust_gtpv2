@@ -1,9 +1,10 @@
-use std::collections::VecDeque;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
 
 use crate::config::*;
+
 
 lazy_static::lazy_static! {
     pub static ref IPPOOL: Arc<Mutex<VecDeque<Ipv4Addr>>> = Arc::new(Mutex::new(VecDeque::new()));
@@ -16,7 +17,7 @@ pub fn add_ip(ip: Ipv4Addr) {
 }
 
 
-pub fn get_ip() -> Ipv4Addr {
+pub fn allocate_ip() -> Ipv4Addr {
     let mut pool_lock = IPPOOL.lock().unwrap();
     let ip = pool_lock.pop_front();
     return ip.unwrap();

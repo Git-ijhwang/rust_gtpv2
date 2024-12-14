@@ -1,8 +1,12 @@
 extern crate lazy_static;
 use tokio::time::{self, Duration};
+use std::sync::{Arc, Mutex};
 use crate::{find_dictionary, gtpv2_type::*, GTP_DICTIONARY};
 use tokio::sync::mpsc::{Receiver, Sender};
 use crate::peers::*;
+use crate::session::*;
+use crate::gtpv2_send::*;
+
 
 
 // #[derive(Debug, Clone, Copy)]
@@ -31,46 +35,48 @@ impl Gtpv2CHeader {
     }
 
     pub fn encode<'a> (p:&'a mut [u8], p_flag: bool,
-            t_flag: bool, mp_flag: bool,
-            t: u8, l: u16, teid: u32,
-            s: u32, mp: u8) -> (&[u8], usize)
+            t_flag: bool, mp_flag: bool, t: u8,
+            l: u16, teid: u32, s: u32, mp: u8)
+            -> (&[u8], usize)
     {
 
         let mut v = (GTP_VERSION & 0b111) << 5; // Version은 상위 3비트
-        let mut len = 8; //without TEID Field.
+        let mut length = 8; //without TEID Field.
+        let mut l = l;
+
         if p_flag {
             v |= 0b0001_0000; // P-flag 설정
         }
+
         if t_flag {
             v |= 0b0000_1000; // T-flag 설정
-            len += 4; // Add 4bytes for TEID Field
+            length += 4; // Add 4bytes for TEID Field
+            l += 4;
         }
 
         let mut s = s << 8;
         if mp_flag {
             v |= 0b0000_0100; // T-flag 설정
-            s |= mp as u32;
+            // s |= mp as u32;
         }
 
-        let l_bytes     = l.to_be_bytes();
-        let teid_bytes  = teid.to_be_bytes();
-        let s_bytes     = s.to_be_bytes();
+        let len     = l.to_be_bytes();
+        let teid  = teid.to_be_bytes();
+        let seq     = s.to_be_bytes();
 
         if t_flag {
-            p[..len].copy_from_slice(
-                &[ v, t,
-                l_bytes[0], l_bytes[1],
-                teid_bytes[0], teid_bytes[1], teid_bytes[2], teid_bytes[3],
-                s_bytes[0], s_bytes[1], s_bytes[2], s_bytes[3] ]);
+            p[..length].copy_from_slice(
+                &[ v, t, len[0], len[1],
+                teid[0], teid[1], teid[2], teid[3],
+                seq[0], seq[1], seq[2], seq[3] ]);
         }
         else {
-            p[..len].copy_from_slice(
-                &[ v, t,
-                l_bytes[0], l_bytes[1],
-                s_bytes[0], s_bytes[1], s_bytes[2], s_bytes[3], ]);
+            p[..length].copy_from_slice(
+                &[ v, t, len[0], len[1],
+                seq[0], seq[1], seq[2], seq[3] ]);
         }
 
-        (&p[..len as usize], len as usize)
+        (&p[..length as usize], length as usize)
     }
 
 }
@@ -241,27 +247,138 @@ pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(),
 
 
 
-pub fn make_gtpv2(msg_type: u8, peer: &mut Peer) {
+pub fn make_gtpv2(msg_type: u8, body: &[u8;1024],
+                oldpeer: Peer, t_flag: bool, len: u8)
+-> Result<(), String> {
+    let mut peer;
+    let mut length :usize = 0;
     let mut buffer: [u8; 1024] = [0; 1024]; 
-    let mut len :usize = 0;
+    let bodylen: u16 = len as u16;
 
-    let msg_info = find_dictionary(msg_type);
-
-    // println!("{:#?}", msg_info);
-    // let pkt = Gtpv2CHeader::new();
-
-    (_, len) = Gtpv2CHeader::encode ( &mut buffer, false,
-        false, false,
-        msg_type, 9, 0, peer.tseq, 0) ;
-
-    for item in msg_info.unwrap().ie_list {
-        // println!("{}: {}, {}", item.ie_type,gtpv_ie_type_vals[item.ie_type as usize], item.presence);
-        if item.presence == "MANDATORY" {
-            len += create_ie(&mut buffer[len..], item.ie_type,177);
-        }
+    let result = get_peer(&oldpeer.ip);
+    match result {
+        Ok(value) => peer = value,
+        _ => return  Err ("test".to_string()),
     }
-    // println!("Len: {} ==>{:?}",len, &buffer[..len]);
+
+    (_, length) = Gtpv2CHeader::encode (&mut buffer, false,
+        t_flag, false,
+        msg_type, bodylen, oldpeer.teid, peer.tseq, 0) ;
+
+    buffer[length..length+len as usize].copy_from_slice(&body[..len as usize]);
+
+    println!("Whole Message: {}+{} -- {:x?}",length, len, &buffer[..length+len as usize]);
+
     peer.update_last_echo_snd_time();
     peer.increase_count();
 
+    Ok(())
+}
+
+
+pub fn gtp_send_create_session_response
+    (session_list: Arc<Mutex<SessionList>>, peer:Peer, imsi:&String, pdn_index: usize)
+-> Result<(), String>
+{
+    let locked_sessionlist = session_list.lock().unwrap();
+    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
+    let session;
+
+    // Get Session.
+    if let Some(session_arc) = locked_session {
+        session = session_arc.lock().unwrap().clone();
+    }
+    else {
+        return Err("Error No session".to_string());
+    }
+
+    let mut buffer:[u8;1024] = [0u8;1024];
+
+    //IE CAUSE
+    let mut total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
+
+    //IE F-TEID
+
+    //IE PAA
+    let ip = session.pdn[pdn_index-1].ip;
+    total_len = gtpv2_add_ie_paa(&mut buffer, 0, 1, ip, total_len as u8);
+    //IE PAN Restriction
+    //IE AMBR
+
+    //IE EBI
+    let ebi = session.pdn[pdn_index-1].lbi;
+    total_len = gtpv2_add_ie_tv1( &mut buffer, GTPV2C_IE_EBI, 0, ebi, total_len);
+
+    //IE BEARER Context
+    //IE Recovery
+
+    //Make GTPv2 Header
+    make_gtpv2(GTPV2C_CREATE_SESSION_RSP, &buffer, peer, true, total_len as u8);
+
+
+    Ok(())
+}
+
+
+pub fn gtp_send_modify_bearer_response
+    (session_list: Arc<Mutex<SessionList>>, peer:Peer, imsi:&String, pdn_index: usize)
+-> Result<(), String>
+{
+    let locked_sessionlist = session_list.lock().unwrap();
+    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
+    let session;
+
+    // Get Session.
+    if let Some(session_arc) = locked_session {
+        session = session_arc.lock().unwrap().clone();
+    }
+    else {
+        return Err("Error No session".to_string());
+    }
+
+    let mut buffer:[u8;1024] = [0u8;1024];
+
+    //IE Cause
+    //IE MSISDN
+    //IE LBI
+    //IE APN Restriction
+    //IE PCO
+    //IE Bearer Contexts modified
+    //IE Change Report Action
+    //IE Recovery
+
+    //Make GTPv2 Header
+    make_gtpv2(GTPV2C_MODIFY_BEARER_RSP, &buffer, peer, true, total_len as u8);
+
+
+    Ok(())
+}
+
+
+pub fn gtp_send_delete_session_request
+    (session_list: Arc<Mutex<SessionList>>, peer:Peer, imsi:&String, pdn_index: usize)
+-> Result<(), String>
+{
+    let locked_sessionlist = session_list.lock().unwrap();
+    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
+    let session;
+
+    // Get Session.
+    if let Some(session_arc) = locked_session {
+        session = session_arc.lock().unwrap().clone();
+    }
+    else {
+        return Err("Error No session".to_string());
+    }
+
+    let mut buffer:[u8;1024] = [0u8;1024];
+
+    //IE Cause
+    //IE Recovery
+    //IE PCO
+
+    //Make GTPv2 Header
+    make_gtpv2(GTPV2C_DELETE_SESSION_RSP, &buffer, peer, true, total_len as u8);
+
+    Ok(())
 }

@@ -162,6 +162,18 @@ pub fn create_peer () {
 }
 
 
+// pub fn get_mut_peer(ip: &Ipv4Addr) -> Result<&mut Peer, ()> {
+//     let list = GTP2_PEER.lock().unwrap();
+//     let key = u32::from(*ip).into();
+
+//     if let Some(peer) = list.get(&key) {
+//         Ok( &mut peer)
+//     }
+//     else {
+//         Err(())
+//     }
+// }
+
 pub fn get_peer(ip: &Ipv4Addr) -> Result<Peer, ()> {
     let list = GTP2_PEER.lock().unwrap();
     let key = u32::from(*ip).into();
@@ -184,6 +196,7 @@ pub async fn peer_manage()
 
     loop {
         tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut buffer:[u8;1024] = [0u8;1024];
 
         let mut peers = GTP2_PEER.lock().unwrap();
         for (key, peer) in  peers.iter_mut() {
@@ -194,7 +207,7 @@ pub async fn peer_manage()
                     // peer.activate_peer_status();
 
                     if peer.get_count() <= rexmit_cnt {
-                        make_gtpv2(GTPV2C_ECHO_REQ,  peer);
+                        make_gtpv2(GTPV2C_ECHO_REQ, &mut buffer, peer.clone(), false, 0);
                     }
                     else {
                         peer.update_last_active();
