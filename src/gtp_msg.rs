@@ -1,6 +1,8 @@
 extern crate lazy_static;
 // use tokio::time::{self, Duration};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
+use tokio::time::*;
 use crate::gtpv2_type::*;
 // use crate::recv_gtpv2::*;
 // use tokio::sync::mpsc::{Receiver, Sender};
@@ -206,20 +208,29 @@ pub fn gtpv2_get_ie_under_tv4( data: &[u8],
 }
 
 
-pub fn gtpv2_get_ie_tbcd(data: &[u8], val: &mut [u8])
--> Result<(), &'static str> {
-    if data.len() > val.len() {
-        return Err("Destination buffer is too small");
+
+fn _dec_tbcd(input: &[u8], n: usize, output: &mut Vec<u8>) -> usize {
+    if n < 6 || n > 9 {
+        return 0;
     }
 
-    _dec_tbcd(data, val.len(), val);
-    Ok(())
-}
+    let mut c = 0;
 
+    for i in 0..n - 1 {
+        output.push((input[i] & 0x0F) + b'0');
+        output.push((input[i] >> 4) + b'0');
+        c += 2;
+    }
 
-// Simulate _dec_tbcd function (you need to replace it with your actual implementation)
-fn _dec_tbcd(data: &[u8], len: usize, val: &mut [u8]) {
-    val[..len].copy_from_slice(&data[..len]);
+    output.push((input[n - 1] & 0x0F) + b'0');
+    c += 1;
+
+    if (input[n - 1] & 0xF0) != 0xF0 {
+        output.push((input[n - 1] >> 4) + b'0');
+        c += 1;
+    }
+
+    c
 }
 
 // pub fn gtpv2_get_ie_cause(data: &[u8], causeie: &mut Gtpv2Error) -> Result<(), &'static str> {
@@ -253,41 +264,7 @@ pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(),
 }
 
 
-pub fn make_gtpv2(msg_type: u8, body: &[u8;1024],
-                oldpeer: Peer, t_flag: bool, len: u8)
--> Result<(), String> {
-    let mut peer;
-    let mut length :usize = 0;
-    let mut buffer: [u8; 1024] = [0; 1024]; 
-    let bodylen: u16 = len as u16;
-
-    let result = get_peer(&oldpeer.ip);
-    match result {
-        Ok(value) => peer = value,
-        _ => return  Err ("test".to_string()),
-    }
-
-    (_, length) = Gtpv2CHeader::encode (&mut buffer, false,
-        t_flag, false,
-        msg_type, bodylen, oldpeer.teid, peer.tseq, 0) ;
-
-    buffer[length..length + len as usize].copy_from_slice(&body[..len as usize]);
-
-    let pkt = EncapPkt::new(peer.ip, msg_type, buffer[..length + len as usize].to_vec());
-
-    send_udp_data(&buffer[..length+len as usize], &peer.ip.to_string(), peer.port);
-
-    SHARED_QUEUE.lock().unwrap().push(pkt);
-
-
-    peer.update_last_echo_snd_time();
-    peer.increase_count();
-
-    Ok(())
-}
-
-
-pub fn gtp_send_create_session_response
+pub async fn gtp_send_create_session_response
     (session_list: Arc<Mutex<SessionList>>, peer:Peer, imsi:&String, pdn_index: usize)
 -> Result<(), String>
 {
@@ -323,7 +300,6 @@ pub fn gtp_send_create_session_response
     //IE BEARER Context
     //IE Recovery
 
-    //Make GTPv2 Header
     make_gtpv2(GTPV2C_CREATE_SESSION_RSP, &buffer, peer, true, total_len as u8);
 
     Ok(())

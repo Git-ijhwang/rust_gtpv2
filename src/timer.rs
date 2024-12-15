@@ -1,9 +1,9 @@
-use tokio::time::{self, Duration, Instant};
-use tokio::sync::{mpsc, oneshot};
-
+use tokio::time::*;
+use tokio::sync::*;
+use tokio::sync::Mutex;
 use std::net::Ipv4Addr;
 use std::sync::mpsc::{Sender, Receiver};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc ;
 use std::collections::VecDeque;
 
 use crate::gtp_msg::*;
@@ -203,4 +203,18 @@ impl MsgQue  {
             expired.clear();
         }
     }
+
+     // check_timer를 비동기 태스크로 실행하는 함수
+    //  pub fn start_timer_task(&mut self) {
+     pub fn start_timer_task( self) {
+        let queue = Arc::new(Mutex::new(self)); // queue를 Arc로 감싸서 공유 가능하게 만듦
+
+        // 새로운 비동기 태스크로 check_timer 실행
+        tokio::spawn(async move {
+            let mut queue_locked = queue.lock().await;
+            // self.check_timer().await; // 비동기적으로 실행
+            queue_locked.check_timer().await;
+        });
+    }
+
 }

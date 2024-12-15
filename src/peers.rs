@@ -2,16 +2,17 @@ use std::net::AddrParseError;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 use std::sync::Mutex;
+use std::time::Instant;
 use std::collections::HashMap;
 use lazy_static::lazy_static;
 use tokio::time::{self, Duration};
 use crate::gtpv2_type::*;
+use crate::gtpv2_send::*;
 use crate::config::*;
 use crate::gtp_msg::*;
 // use std::sync::{Arc, Mutex};
 use std::sync::MutexGuard;
 extern crate lazy_static;
-use std::time::Instant;
 
 
 lazy_static! {
@@ -200,7 +201,6 @@ pub async fn peer_manage()
 
         let mut peers = GTP2_PEER.lock().unwrap();
         for (key, peer) in  peers.iter_mut() {
-            // println!("{}, {:?}",key, peer);
             if Instant::now() >= peer.last_echo_snd_time+Duration::from_secs(echo_period) {
                 if peer.status == false {
                     //Send Echo Request

@@ -148,11 +148,7 @@ struct Gtpv2Msg {
     pie: Vec<Vec<Option<Vec<u8>>>>,
 }
 
-fn get_gtpv2_peer(ip: u32) -> Option<Arc<Mutex<Gtpv2Peer>>> {
-    // Example function to get a peer (to be implemented)
-    // Return None if no peer is found
-    None
-}
+
 fn encode_tbcd(input: &[u8]) -> Result<Vec<u8>, String> {
     let n = input.len();
     if n < 2 || n > 32 {
@@ -212,10 +208,7 @@ fn decode_tbcd(input: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 fn send_gtpv2_version_not_supported(
-    _peer: Arc<Mutex<Gtpv2Peer>>,
-    _peerip: u32,
-    _peerport: u16,
-    _seqnum: u32,
+    _peer: Arc<Mutex<Gtpv2Peer>>, _peerip: u32, _peerport: u16, _seqnum: u32
 ) {
     // Example function to send version not supported message
     println!("Sent version not supported message.");
@@ -333,12 +326,10 @@ impl IeMessage {
     }
 }
 
-pub fn check_ie_value(
-        // session: Arc<Session>,
-    raw_data: &[u8], dictionary: &GtpMessage, teid: u32)
+// session: Arc<Session>,
+pub fn get_ie_value(raw_data: &[u8])
     -> IeMessage
 {
-
     // let mut ies = Vec::new();
     let mut index = 0;
     let mut table = IeMessage::new();
@@ -365,42 +356,6 @@ pub fn check_ie_value(
     }
 
     table
-
-    //     let ie_type = raw_data[index];
-    //     let ie_length = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]) as usize;
-    //     let ie_value = 
-
-    //     match ie_type {
-    //         GTPV2C_IE_IMSI => {
-
-    //             // let imsi::<String>.slice_from_raw_parts(raw_data[index+4], ie_length);
-    //             let imsi = ie_value
-    //             .iter()
-    //             .map(|byte| format!("{:02}", byte)) // 각 바이트를 2자리 16진수로 변환
-    //             .collect::<String>();
-
-    //             // session.imsi = imsi;
-    //         }
-    //         _ => println!("Not yet developed"),
-    //     }
-
-    //     if index + 4 + ie_length > raw_data.len() {
-    //         break;
-    //     }
-
-    //     // let ie_value = &raw_data[index+4..index+4+ie_length];
-    //     let nested_ies = if is_group_ie(ie_type, dictionary) {
-    //         extract_nested_ies(ie_value, dictionary)
-    //     }
-    //     else {
-    //         Vec::new()
-    //     };
-
-    //     ies.push((ie_type, ie_length, nested_ies));
-    //     index += 4 + ie_length;
-    // }
-
-    // ies
 }
 
 
@@ -415,7 +370,9 @@ pub fn interface_type_map(interface_type: u8) -> u8 {
     }
 }
 
-fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, peer: & mut Peer, ies: IeMessage, teid: u32)
+
+fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>,
+            peer: & mut Peer, ies: IeMessage, teid: u32)
 -> Result < (), String>
 {
     let imsi;
@@ -608,7 +565,9 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
 }
 
 
-fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>, peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32) {
+fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>,
+        peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
+{
     match msg_type {
         GTPV2C_CREATE_SESSION_REQ => {
             recv_crte_sess_req(teid_list, session_list, peer, ies, teid);
@@ -619,8 +578,7 @@ fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList
 
 
 pub fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
-    session_list: Arc<Mutex<SessionList>>,
-    teid_list: Arc<Mutex<TeidList>>,
+    session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>,
 )  -> Result<(), String> {
     println!("Processed GTPv2 data.");
     
@@ -665,28 +623,12 @@ pub fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
     }
 
     //get IE value
-    let ies = check_ie_value(&_data[hdr_len..], &msg_define, teid);
+    let ies = get_ie_value(&_data[hdr_len..]);
 
     pgw_recv(teid_list, session_list, peer, ies, rcv_msg_type, teid);
 
     Ok(())
 }
-
-
-/*
-    {
-        let peer = peer.lock().unwrap();
-        if peer.status == 0
-            && msg_type != GTPV2C_ECHO_REQ
-            && msg_type != GTPV2C_ECHO_RSP
-        {
-            println!( "(GTPv2-RECV) Peer ({}) is not Active", Ipv4Addr::from(peer.ipaddr));
-            return ;
-        }
-    }
-
-*/
-
 
 
 pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>) {
@@ -704,7 +646,7 @@ pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>,
                     // let sin_addr = addr.ip();
                     let sin_port = addr.port();
 
-                    /* TEST */
+                    /* Only for TEST */
                     let sin_addr = &Ipv4Addr::new(10,10,1,71);
                     match get_peer(sin_addr) {
                         Err(_) => {
@@ -728,18 +670,3 @@ pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>,
         }
     }
 }
-
-
-// fn main() {
-//     let socket = Arc::new(
-//         UdpSocket::bind("0.0.0.0:2123")
-//             .expect("Could not bind to address"),
-//     );
-
-//     let recv_socket = socket.clone();
-//     thread::spawn(move || gtpv2_recv_task(recv_socket));
-
-//     loop {
-//         // Main thread can perform other tasks
-//     }
-// }

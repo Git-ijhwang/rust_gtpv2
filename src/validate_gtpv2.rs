@@ -50,19 +50,6 @@ fn validate_group_ie(
     Ok(())
 }
 
-// fn validate_message( msg_type: u8, ies: Vec<(u8, usize, Vec<(u8, usize)>)>, msg_def: &GtpMessage )
-// -> Result<(), String> {
-//     // let msg_def = dictionary
-//     //     .iter()
-//     //     .find(|msg| msg.msg_type == msg_type )
-//     //     .ok_or(format!("Unknown message type: {}", msg_type))?;
-
-//     for expected_ie in &msg_def.ie_list {
-//         validate_ie(expected_ie, &ies, true)?;
-//     }
-
-//     Ok(())
-// }
 
 // dictionary: &[GtpMessage],
 pub fn

@@ -25,8 +25,10 @@ use crate::recv_gtpv2::*;
 use crate::gtp_dictionary::*;
 use crate::session::*;
 use crate::ippool::*;
+use crate::timer::*;
 use std::net::AddrParseError;
 use thiserror::Error;
+
 
 #[derive(Debug, Error)]
 pub enum MyError {
@@ -36,7 +38,6 @@ pub enum MyError {
     #[error("Unknown error occurred")]
     Unknown,
 }
-
 
 
 #[tokio::main]
@@ -58,28 +59,31 @@ async fn main() -> Result<(), Error>
         return Err(v);
     }
 
+    //Create Peer structure based on config_peer file
     create_peer();
+
+    //IP pool
     prepare_ip_pool();
 
     let session_list = Arc::new(Mutex::new(SessionList::new()));
     let teid_list = Arc::new(Mutex::new(TeidList::new()));
+    let msg_queue = MsgQue::new();
 
     let config = CONFIG_MAP.read().unwrap();
 
     if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", config.get("SrcPort").unwrap().to_string())) {
         println!("Socket Successfully Created!: {:?}", recv_socket);
         thread::spawn(move || gtpv2_recv_task(recv_socket, session_list, teid_list));
-        // recv_gtpv2();
     }
     else{
         eprintln!("Failed to create socket for address 0.0.0.0:{}",
         config.get("SrcPort").unwrap());
     }
 
-    // loop {
-        // tokio::time::sleep(Duration::from_secs(1)).await;
-        peer_manage().await;
-    // };
-    Ok(())
+    peer_manage().await;
 
+    let queue_clone = SHARED_QUEUE.clone();
+    queue_clone.lock().await.check_timer().await;
+
+    Ok(())
 }
