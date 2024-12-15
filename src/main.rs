@@ -6,7 +6,7 @@ mod gtp_msg;
 mod config;
 mod udpsock;
 mod packet;
-mod timer;
+mod pkt_manage;
 mod gtp_dictionary;
 mod validate_gtpv2;
 mod peers;
@@ -26,7 +26,7 @@ use crate::gtpv2_recv::*;
 use crate::gtp_dictionary::*;
 use crate::session::*;
 use crate::ippool::*;
-use crate::timer::*;
+use crate::pkt_manage::*;
 use std::net::AddrParseError;
 use thiserror::Error;
 
