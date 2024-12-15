@@ -5,7 +5,6 @@ mod gtpv2_ie;
 mod gtp_msg;
 mod config;
 mod udpsock;
-mod packet;
 mod pkt_manage;
 mod gtp_dictionary;
 mod validate_gtpv2;
@@ -13,13 +12,11 @@ mod peers;
 mod ippool;
 mod session;
 
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, Mutex};
 use config::*;
-use gtp_msg::*;
 use std::thread;
 use std::io::Error;
 use core::result::Result;
-use tokio::time::{self, Duration};
 use crate::peers::*;
 use crate::udpsock::*;
 use crate::gtpv2_recv::*;
@@ -68,7 +65,7 @@ async fn main() -> Result<(), Error>
 
     let session_list = Arc::new(Mutex::new(SessionList::new()));
     let teid_list = Arc::new(Mutex::new(TeidList::new()));
-    let msg_queue = MsgQue::new();
+    // let msg_queue = MsgQue::new();
 
     let config = CONFIG_MAP.read().unwrap();
 

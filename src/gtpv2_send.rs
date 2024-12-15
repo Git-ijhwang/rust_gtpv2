@@ -33,7 +33,6 @@ pub async fn make_gtpv2(msg_type: u8, body: &[u8;1024],
     oldpeer: Peer, t_flag: bool, len: u8)
 -> Result<(), String> {
     let mut peer;
-    let mut length :usize = 0;
     let bodylen: u16 = len as u16;
     let mut buffer: [u8; 1024] = [0; 1024]; 
 
@@ -43,7 +42,7 @@ pub async fn make_gtpv2(msg_type: u8, body: &[u8;1024],
         _ => return  Err ("Fail to get peer".to_string()),
     }
 
-    (_, length) = Gtpv2CHeader::encode (&mut buffer, false,
+    let (_, length) = Gtpv2CHeader::encode (&mut buffer, false,
                         t_flag, false, msg_type,
                         bodylen, oldpeer.teid, peer.tseq, 0) ;
 

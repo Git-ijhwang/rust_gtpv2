@@ -26,6 +26,8 @@ pub struct GtpMessage {
 
 
 impl GtpMessage {
+
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             msg_type:   0,
@@ -33,14 +35,6 @@ impl GtpMessage {
             ie_counts:  0,
             ie_list:    Vec::new(),
         }
-    }
-
-    pub fn get_ie_list (&self) -> &Vec<IeInfo> {
-        &self.ie_list
-    }
-
-    pub fn print(&self) {
-        println!("{:#?}", self);
     }
 }
 

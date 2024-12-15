@@ -1,12 +1,12 @@
-use crate::{gtp_dictionary::{self, *}, Gtpv2CHeader};
-use std::io::Error;
 use core::result::Result;
+use std::string::String;
+use crate::gtp_msg::*;
 use crate::gtpv2_type::*;
+use crate::gtp_dictionary::*;
 
 // 단일 IE 및 중첩된 그룹 검증
-fn validate_ie(
-    expected_ie: &IeInfo, ies: &[(u8, usize, Vec<(u8, usize)>)], is_top_level: bool
-) -> Result<(), String> {
+fn validate_ie(expected_ie: &IeInfo, ies: &[(u8, usize, Vec<(u8, usize)>)])
+-> Result<(), String> {
 
     let mut matches =
             ies.iter().filter(|(ie_type, _, _)| *ie_type  == expected_ie.ie_type);
@@ -51,20 +51,16 @@ fn validate_group_ie(
 }
 
 
-// dictionary: &[GtpMessage],
 pub fn
 validate_length(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMessage)
 -> Result<bool, String> {
 
-    // let dictionary = GTP_DICTIONARY.read().unwrap();
-
-    // match validate_message(rcv_msg_type, ies.clone(), &msg_dictionary) {
-    //     Ok(()) => println!("Valid"),
-    //     Err(e) => println!("Error {}", e),
-    // }
-
     for expected_ie in &msg_dictionary.ie_list {
-        validate_ie(expected_ie, &ies, true)?;
+        let ret = validate_ie(expected_ie, &ies );
+        match ret {
+            Ok(_) => {},
+            Err(_) => return Err ("IE Validation fail".to_string()),
+        }
     }
 
     let ie_map = IEMap::make_ie_type_map();
@@ -86,14 +82,12 @@ validate_length(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMe
 }
 
 
-pub fn
-parse_header (data: &[u8])  ->
-// Result<(u8, usize), String>
-Result<(Gtpv2CHeader, usize), String>
+pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
 {
+    let seqnum;
     let mut p : usize = 0;
     let mut teid= 0;
-    let seqnum;
+
     println!("data len : {}", data.len());
 
     let mut hdr = Gtpv2CHeader::new();
@@ -106,17 +100,17 @@ Result<(Gtpv2CHeader, usize), String>
     //get Piggyback flag
     let pflag = (data[p] & GTPV2_P_FLAG) != 0;
     //get Teid flag
-    let tflag = (data[p] & GTPV2_T_FLAG) != 0; p+=1;
+    let tflag = (data[p] & GTPV2_T_FLAG) != 0; p += 1;
 
     // let msg_type_map = make_msg_type_map();
-    let msg_type = data[p]; p+=1;
+    let msg_type = data[p]; p += 1;
 
     match get_gtpv2_msg_type(msg_type) {
         Ok(ret) => println!("This message is {}", ret.to_string()),
         Err(_) => return Err(format!("Unknown Message type {}", msg_type).to_string()),
     }
 
-    let msg_len = u16::from_be_bytes([data[p], data[p+1]]) as usize; p+=2;
+    let msg_len = u16::from_be_bytes([data[p], data[p + 1]]) as usize; p += 2;
     if msg_len + 4 != data.len() {
         return Err(
             format!( "(GTPv2-RECV) Length error (received: {}, expected: {}). Discard.",
@@ -142,6 +136,7 @@ Result<(Gtpv2CHeader, usize), String>
 }
 
 
+#[allow(dead_code)]
 pub fn
 get_teid_from_header (data: &[u8])  -> u32
 {

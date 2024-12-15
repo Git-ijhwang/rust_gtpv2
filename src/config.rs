@@ -44,6 +44,7 @@ impl ConfigMap
         self.data.iter()
     }
 
+    #[allow(dead_code)]
     pub fn create_src_bind_addr(&self) -> String {
         let mut result = String::new();
         let addr = ConfigMap::get(self, "Addr");

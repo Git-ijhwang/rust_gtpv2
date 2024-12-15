@@ -24,6 +24,7 @@ pub fn allocate_ip() -> Ipv4Addr {
 }
 
 
+#[allow(dead_code)]
 pub fn print_ippool() {
     let pool_lock = IPPOOL.lock().unwrap();
     println!("IPPOOL: {:#?}", pool_lock);

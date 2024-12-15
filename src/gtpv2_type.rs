@@ -1,5 +1,5 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
-
 // use crate::recv_gtpv2::*;
 /*
  		[ 3GPP TS 29.274 V10.5.0 (2011-12) ]
@@ -242,7 +242,7 @@ pub const GTPV2C_IE_TYPE_MAX: u8 = 		                        255;
 
 
 
-pub static gtpv_msg_type_vals: [&'static str; 256] = [
+pub static GTPV2_MSG_TYPES: [&'static str; 256] = [
 /* 0 */		"Reserved",
 /* 1 */		"Echo Request",
 /* 2 */		"Echo Response",
@@ -505,7 +505,7 @@ pub enum IEs {
 	IMSI(Vec<u8>),
 }
 
-pub static gtpv_ie_type_vals: [&str;256] = [
+pub static GTPV2_IE_TYPES: [&str;256] = [
 /* 0 */		"Reserved",
 /* 1 */		"International Mobile Subscriber Identity (IMSI)",
 /* 2 */		"Cause",
@@ -804,17 +804,17 @@ struct Gtpv2cIeTlv {
 }
 
 pub fn get_gtpv2_msg_type(t: u8) -> Result<&'static str, ()> {
-    if t<0 || t >= GTPV2C_MSG_MAX {
+    if t >= GTPV2C_MSG_MAX {
 		return Err(());
     }
-    Ok(gtpv_msg_type_vals[t as usize])
+    Ok(GTPV2_MSG_TYPES[t as usize])
 }
 
 pub fn get_gtpv2_ie_type(t: u8) -> Result<&'static str, ()> {
-    if t < 0 || t >= GTPV2C_IE_TYPE_MAX {
+    if t >= GTPV2C_IE_TYPE_MAX {
 		return Err(());
     }
-    Ok(gtpv_ie_type_vals[t as usize])
+    Ok(GTPV2_IE_TYPES[t as usize])
 }
 
 pub struct MsgMap {
@@ -846,7 +846,7 @@ impl MsgMap {
 
     pub fn make_msg_type_map() -> MsgMap {
 	    let mut map = MsgMap::new();
-	    for (k, v) in gtpv_msg_type_vals.iter().enumerate() {
+	    for (k, v) in GTPV2_MSG_TYPES.iter().enumerate() {
 		    map.insert(k as u8, v.to_string());
 	    }
 	    map
@@ -881,7 +881,7 @@ impl IEMap {
 
     pub fn make_ie_type_map() -> IEMap { 
 	    let mut map = IEMap::new();
-	    for (k, v) in gtpv_ie_type_vals.iter().enumerate() {
+	    for (k, v) in GTPV2_IE_TYPES.iter().enumerate() {
 		    map.insert(k as u8, v.to_string());
 	    }
 	    map
