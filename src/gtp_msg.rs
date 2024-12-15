@@ -1,16 +1,11 @@
 extern crate lazy_static;
-// use tokio::time::{self, Duration};
 use std::sync::Arc;
 use std::sync::Mutex;
-use tokio::time::*;
+use crate::gtpv2_send::*;
 use crate::gtpv2_type::*;
-// use crate::recv_gtpv2::*;
-// use tokio::sync::mpsc::{Receiver, Sender};
+use crate::gtpv2_ie::*;
 use crate::peers::*;
 use crate::session::*;
-use crate::gtpv2_send::*;
-use crate::timer::*;
-
 
 // #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -209,29 +204,6 @@ pub fn gtpv2_get_ie_under_tv4( data: &[u8],
 
 
 
-fn _dec_tbcd(input: &[u8], n: usize, output: &mut Vec<u8>) -> usize {
-    if n < 6 || n > 9 {
-        return 0;
-    }
-
-    let mut c = 0;
-
-    for i in 0..n - 1 {
-        output.push((input[i] & 0x0F) + b'0');
-        output.push((input[i] >> 4) + b'0');
-        c += 2;
-    }
-
-    output.push((input[n - 1] & 0x0F) + b'0');
-    c += 1;
-
-    if (input[n - 1] & 0xF0) != 0xF0 {
-        output.push((input[n - 1] >> 4) + b'0');
-        c += 1;
-    }
-
-    c
-}
 
 // pub fn gtpv2_get_ie_cause(data: &[u8], causeie: &mut Gtpv2Error) -> Result<(), &'static str> {
 //     if data.len() < 2 {

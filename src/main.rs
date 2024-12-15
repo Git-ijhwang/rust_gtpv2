@@ -1,12 +1,13 @@
 mod gtpv2_type;
 mod gtpv2_send;
+mod gtpv2_recv;
+mod gtpv2_ie;
 mod gtp_msg;
 mod config;
 mod udpsock;
 mod packet;
 mod timer;
 mod gtp_dictionary;
-mod gtpv2_recv;
 mod validate_gtpv2;
 mod peers;
 mod ippool;
