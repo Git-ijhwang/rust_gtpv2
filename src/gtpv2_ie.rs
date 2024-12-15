@@ -1,9 +1,13 @@
 use std::net::Ipv4Addr;
 use crate::gtpv2_type::*;
 
+pub const PDN_TYPE_IPV4:u8 =  1;
+pub const PDN_TYPE_IPV6:u8 =  2;
+
 fn bcd_encode(a: u8, b: u8) -> u8 {
     (a << 4) | (b & 0x0F)
 }
+
 
 fn _dec_tbcd(input: &[u8], n: usize, output: &mut Vec<u8>) -> usize {
     if n < 6 || n > 9 {
@@ -28,6 +32,7 @@ fn _dec_tbcd(input: &[u8], n: usize, output: &mut Vec<u8>) -> usize {
 
     c
 }
+
 
 fn _enc_tbcd(input: &[u8], length: usize, output: &mut [u8])
 -> usize {
@@ -71,7 +76,8 @@ fn _enc_mccmnc(s: &[u8], n: usize, r: &mut Vec<u8>)
     if n == 5 {
         r.push(bcd_encode(0xFF, s[2]));
         c += 1;
-    } else {
+    }
+    else {
         r.push(bcd_encode(s[5], s[2]));
         c += 1;
     }
@@ -208,22 +214,28 @@ pub fn gtpv2_add_ie_cause( msg: &mut [u8;1024],
 }
 
 
-pub fn gtpv2_add_ie_paa( msg: &mut [u8;1024],
-    instance: u8, pdn_type: u8, addr: Ipv4Addr, len: u8)
-->usize {
+pub fn gtpv2_add_ie_paa( msg: &mut [u8;1024], instance: u8,
+            pdn_type: u8, addr: Ipv4Addr)
+-> usize {
     let mut buf = [0u8; 4];
+    let mut len = 0;
 
-    if pdn_type == 1 {
+    if pdn_type == PDN_TYPE_IPV4 {
         buf = addr.octets();
+        len = 4;
+    }
+    else if pdn_type == PDN_TYPE_IPV6 {
+        buf = addr.octets();
+        len = 16;
     }
 
-    gtpv2_add_ie_tlv(msg, GTPV2C_IE_PAA, instance, &buf, 4)
+    gtpv2_add_ie_tlv(msg, GTPV2C_IE_PAA, instance, &buf, len)
 }
 
 
 pub fn gtpv2_add_ie_tbcd( msg: &mut [u8; 1024],
-    msg_type: u8, instance: u8, value: &[u8]
-) -> usize {
+    msg_type: u8, instance: u8, value: &[u8])
+-> usize {
     let mut buf = vec![0u8; 64];
     
     let len = _enc_tbcd(value, value.len(), &mut buf);

@@ -261,7 +261,7 @@ pub async fn gtp_send_create_session_response
 
     //IE PAA
     let ip = session.pdn[pdn_index-1].ip;
-    total_len = gtpv2_add_ie_paa(&mut buffer, 0, 1, ip, total_len as u8);
+    total_len = gtpv2_add_ie_paa(&mut buffer, 0, PDN_TYPE_IPV4, ip );
     //IE PAN Restriction
     //IE AMBR
 

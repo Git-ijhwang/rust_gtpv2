@@ -1,70 +1,11 @@
 use tokio::time::*;
-use tokio::sync::*;
+use std::sync::Arc ;
 use tokio::sync::Mutex;
 use std::net::Ipv4Addr;
-use std::sync::mpsc::{Sender, Receiver};
-use std::sync::Arc ;
 use std::collections::VecDeque;
 
-use crate::gtp_msg::*;
 use crate::gtpv2_type::*;
 use crate::peers::*;
-
-// pub async fn start_timer(
-// interval: Duration,
-// mut rx: mpsc::Receiver<String>)
-// {
-
-// let mut timer = time::interval(interval);
-// let mut count = 0;
-
-// loop {
-//     tokio::select! {
-//         Some(signal) = rx.recv() => {
-
-//             println!("<======== 타이머: 외부 종료 신호 수신, 타이머 종료 {}", signal  );
-//             break; // 외부 신호를 받으면 종료
-//         }
-//         _ = timer.tick() => {
-//             count += 1;
-//             println!("타이머: {}번째 동작 실행", count);
-//             // 추가적인 처리 로직 (예: 네트워크 전송 등)
-//         }
-//     }
-// }
-// println!("Done.");
-// }
-
-
-// async fn timer_manager(
-// timer_map: Arc<Mutex< HashMap< u64, tokio::time::Instant >>>)
-// {
-
-// loop {
-//     tokio::time::sleep(Duration::from_secs(1)).await; //1초 마다 hashmpa search
-
-//     let now = tokio::time::Instant::now();
-//     let mut expired = vec![]; //for expired timer
-
-//     {
-//         let mut map = timer_map.lock().unwrap();
-//         for (&id, &expiry) in map.iter() {
-//             if now >= expiry {
-//                 expired.push(id);
-//             }
-//         }
-
-//         for id in &expired {
-//             map.remove(id);
-//         }
-//     }
-
-//     // 재전송 처리
-//     for id in expired {
-//         println!("Resending message for ID: {}", id);
-//     }
-// }
-// }
 
 
 static ECHO_TIMEOUT: Duration = Duration::from_secs(3);
