@@ -7,6 +7,7 @@ use std::time::Duration;
 use core::result::Result;
 use std::thread;
 use std::collections::HashMap;
+use log::{debug, error, info, trace, warn};
 
 use crate::gtp_dictionary::{self, *};
 use crate::validate_gtpv2::*;
@@ -371,7 +372,7 @@ pub fn interface_type_map(interface_type: u8) -> u8 {
 }
 
 
-fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
+async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 -> Result < (), String>
 {
     let imsi;
@@ -380,43 +381,49 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
     let mut pdn_index:u32 = 0;
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
-    println!("GET IE IMSI");
+    trace!("GET IE IMSI");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_IMSI) {
         // IMSI 데이터 복사 없이 참조로 처리
     
         match decode_tbcd(&lv[0].v) {
             Ok(decoded) => {
-                // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
+                info!("TBCD Convert for IMSI success");
                 imsi = String::from_utf8_lossy(&decoded).into_owned();
             }
-            Err(_) => return Err("Failed to decode IMSI.".to_string()),
+            Err(_) => {
+                error!("Failed to decode IMSI");
+                return Err("Failed to decode IMSI.".to_string());
+            }
         }
     } else {
+        error!("IMSI IE not found");
         return Err("IMSI IE not found.".to_string());
     }
 
-    println!("GET IE MSISDN");
+    trace!("GET IE MSISDN");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_MSISDN) {
     
         match decode_tbcd(&lv[0].v) {
             Ok(decoded) => {
-                // UTF-8 변환 시 바로 String을 반환하여 중복 복사 제거
+                info!("TBCD Convert for MSISDN success");
                 msisdn = String::from_utf8_lossy(&decoded).into_owned();
             }
-            Err(_) => return Err("Failed to decode MSISDN.".to_string()),
+            Err(_) => {
+                error!("Failed to decode MSISDN");
+                return Err("Failed to decode MSISDN.".to_string());
+            }
         }
     } else {
+        error!("MSISDN IE not found");
         return Err("MSISDN IE not found.".to_string());
     }
     
-    println!("GET IE EBI");
-
+    trace!("GET IE EBI");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
         ebi = lv[0].v[0];
     }
 
-    println!("Start get FTEID");
-
+    trace!("Start get FTEID");
     let mut gtpc_interfaces = vec![control_info::new()];
     let mut gtpu_interfaces = vec![control_info::new()];
     if let Some(lv) = ies.get_ie(GTPV2C_IE_FTEID) {
@@ -427,9 +434,10 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
             info.teid = u32::from_be_bytes( item.v[1..5].try_into().expect("convert to teid problem") );
             info.addr = Ipv4Addr::new( item.v[5], item.v[6], item.v[7], item.v[8]);
 
-            if peer.ip != info.addr {
-                return Err("Unknown interface type.".to_string());
-            }
+            // Only Test
+            // if peer.ip != info.addr {
+            //     return Err("Unknown interface type.".to_string());
+            // }
 
             if info.interface_type == 6 {
                 peer.teid = info.teid;
@@ -444,19 +452,25 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         }
     }
 
-    println!("APN");
+    trace!("APN");
     let mut apn = String::new();
     if let Some(lv) = ies.get_ie(GTPV2C_IE_APN) {
         if lv[0].v.len() > 0{
             let ret = String::from_utf8(lv[0].v.clone());
             match ret {
-                Ok(val) => apn = val,
-                Err(_) => return Err("Failed to decode IMSI.".to_string()),
+                Ok(val) => {
+                    info!("Success to get APN: {}", apn);
+                    apn = val;
+                }
+                Err(_) => {
+                    error!("Failed to get APN");
+                    return Err("Failed to get APN.".to_string());
+                }
             }
         }
     }
 
-    println!("AMBR");
+    trace!("AMBR");
     let mut ambr_ul:u32 = 0;
     let mut ambr_dl:u32 = 0;
     if let Some(lv) = ies.get_ie(GTPV2C_IE_AMBR) {
@@ -464,7 +478,7 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         ambr_dl = u32::from_be_bytes( lv[0].v[4..8].try_into().expect("convert to ambr_ul problem"));
     }
 
-    println!("Bearer QoS");
+    trace!("Bearer QoS");
     let mut bearer_qos = BearerQos::new();
     if let Some(lv) = ies.get_ie(GTPV2C_IE_BEARER_QOS) {
         for item in lv {
@@ -479,7 +493,7 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
 
     if teid == 0 { //Initial Attach
-        println!("New session");
+        trace!("Create New session");
         let teid = generate_teid();
 
         TEID_LIST.lock().unwrap().add_teid(teid.unwrap(), &imsi);
@@ -490,19 +504,22 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         match locked_session {
             Some(value) => {
+                error!("Already session is exist Error");
                 arc_session = value;
             }
             _ => {
+                info!("Create Session");
                 arc_session = locked_sessionlist.create_session(imsi.clone());
             }
         }
 
-        //Session Setting
+        trace!("Session Setting");
         {
             let mut session = &mut arc_session.lock().unwrap();
             session.msisdn = msisdn;
         }
 
+        trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
         { //PDN
             let session = &mut arc_session.lock().unwrap();
@@ -523,6 +540,7 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
             pdn_index = vecpdn.len() as u32;
         }
 
+        trace!("Setting for Bearer");
         { //Bearer
             let session = &mut arc_session.lock().unwrap();
             let vecbearer = &mut session.bearer;
@@ -536,15 +554,16 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
             vecbearer.push(new_bearer);
         }
 
+        trace!("Control interface settings");
         {
             let session = &mut arc_session.lock().unwrap();
             session.control = gtpc_interfaces;
         }
 
         drop(locked_sessionlist);
-        println!("Go! Response");
 
-        gtp_send_create_session_response(peer.clone(), &imsi.clone(), pdn_index as usize);
+        trace!("Go! Response");
+        gtp_send_create_session_response(peer.clone(), &imsi.clone(), pdn_index as usize).await;
 
     }
     else { // Multiple PDN Attach 
@@ -580,12 +599,12 @@ fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 }
 
 
-fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
+async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
 {
     match msg_type {
         GTPV2C_CREATE_SESSION_REQ => {
-            println!("This is crte sess req");
-            recv_crte_sess_req( peer, ies, teid);
+            trace!("This message is Create Session Request");
+            recv_crte_sess_req( peer, ies, teid).await;
         }
         _ => {}
     }
@@ -595,7 +614,6 @@ fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
 pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
     // session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>,
 )  -> Result<(), String> {
-    println!("Processed GTPv2 data.");
     
     let hdr_len;
     let rcv_msg_type;
@@ -603,6 +621,7 @@ pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
     let mut teid = 0;
     let mut rcv_seq = 0;
 
+    trace!("Processed GTPv2 data.");
     let ret = parse_header(_data.clone());
     match ret {
         Ok( (v, n)) => {
@@ -612,11 +631,12 @@ pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
             hdr_len      = n;
         }
         _ => {
+            error!("Error in parsing header");
             return Err(format!("error").to_string());
         },
     }
 
-    // Get dictionary based on receive message type
+    trace!("Get dictionary based on receive message type");
     let dictionary = GTP_DICTIONARY.read().await;
 
     let result = dictionary 
@@ -624,8 +644,12 @@ pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
             .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
     
     match result {
-        Ok(data) => msg_define = data, 
+        Ok(data) =>{
+            info!("Success! to get gtp dictionary");
+            msg_define = data;
+        }
         Err(err) => { println!("{}", err);
+            error!("Fail to get dictionary");
             return Err(format!("error").to_string());
         },
     }
@@ -633,13 +657,14 @@ pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
 
     let ies = check_ie_length(&_data[hdr_len..], &msg_define);
     if let Err(ret) = validate_length(&ies, &msg_define) {
-        println!("Validation Check false: [{}]", ret);
+        error!("Validation Check false: [{}]", ret);
     }
 
-    //get IE value
+    trace!("get IE value");
     let ies = get_ie_value(&_data[hdr_len..]);
 
-    pgw_recv( peer, ies, rcv_msg_type, teid);
+    trace!("Send to Next peer");
+    pgw_recv( peer, ies, rcv_msg_type, teid).await;
 
     Ok(())
 }
@@ -658,33 +683,35 @@ pub async fn gtpv2_recv_task(socket: UdpSocket) {
 
         match socket.recv_from(&mut buf) {
             Ok((nbyte, addr)) => {
+                info!("Receive GTP MESSAGE");
                 if let SocketAddr::V4(addr) = addr {
                     // let sin_addr = addr.ip();
                     let sin_port = addr.port();
 
                     /* Only for TEST */
-                    // let sin_addr = &Ipv4Addr::from_str("10.10.1.71").ok();
                     let sin_addr = &Ipv4Addr::new(10,10,1,71);
+                    trace!("sin_addr info {:?}", sin_addr);
+
                     match get_peer(sin_addr) {
                         Err(_) => {
-                            println!("This is not registered PEER!");
+                            warn!("This is not registered PEER!");
                         } 
 
                         Ok(mut peer) => {
+                            info!("Success get peer {}", peer.ip);
                             _ = recv_gtpv2(&buf[..nbyte], &mut peer ).await;
-                            // _ = recv_gtpv2(&buf[..nbyte], &mut peer, session_list.clone(), teid_list.clone()).await;
                         }
                     }
                 }
             }
 
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // Timeout occurred, continue to next iteration
+                error!(" Timeout occurred, continue to next iteration ");
                 continue;
             }
 
             Err(e) => {
-                println!("Error receiving data: {:?}", e);
+                error!("Error receiving data: {:?}", e);
                 break;
             }
         }

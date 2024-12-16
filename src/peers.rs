@@ -5,6 +5,7 @@ use std::time::Instant;
 use std::collections::HashMap;
 use lazy_static::lazy_static;
 use tokio::time::{self, Duration};
+use log::{debug, error, info, trace, warn};
 use tokio::sync::RwLock;
 use crate::gtpv2_type::*;
 use crate::gtpv2_send::*;
@@ -190,7 +191,7 @@ pub async fn peer_manage()
                     // peer.activate_peer_status();
 
                     if peer.get_count() <= rexmit_cnt {
-                        make_gtpv2(GTPV2C_ECHO_REQ, &mut buffer, peer.clone(), false, 0);
+                        // make_gtpv2(GTPV2C_ECHO_REQ, mut buffer, peer.clone(), false, 0);
                     }
                     else {
                         peer.update_last_active();

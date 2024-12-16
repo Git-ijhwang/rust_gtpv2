@@ -37,6 +37,7 @@ impl GtpMessage {
             ie_list:    Vec::new(),
         }
     }
+
 }
 
 lazy_static::lazy_static! {
@@ -44,6 +45,9 @@ lazy_static::lazy_static! {
         Arc::new(RwLock::new(vec![]));
 }
 
+    pub async fn print_dictionary () {
+        println!("{:#?}",GTP_DICTIONARY.read().await.clone());
+    }
 
 pub async fn load_gtp_dictionary(file_path: &str)
 -> Result <(), Error>

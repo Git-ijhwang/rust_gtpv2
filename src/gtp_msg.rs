@@ -1,6 +1,7 @@
 extern crate lazy_static;
 use std::sync::Arc;
 use std::sync::Mutex;
+use log::{debug, error, info, trace, warn};
 use crate::gtpv2_send::*;
 use crate::gtpv2_type::*;
 use crate::gtpv2_ie::*;
@@ -236,28 +237,25 @@ pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(),
 }
 
 
-pub  fn
+pub async fn
 gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
 -> Result<(), String>
 {
-    println!("get session list");
-    let locked_sessionlist = SESSION_LIST.lock().unwrap();
+    trace!("Start Create Session Response ");
 
-    println!("get session ");
+    let locked_sessionlist = SESSION_LIST.lock().unwrap();
     let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
     let session;
 
-    // Get Session.
+    trace!("Get Session.");
     if let Some(session_arc) = locked_session {
-        println!("111");
+        trace!("Success to get session structure");
         session = session_arc.lock().unwrap().clone();
     }
     else {
-        println!("Error?");
+        error!(" Fail to find session");
         return Err("Error No session".to_string());
     }
-
-    println!("Start Create Session Response Process.");
 
     let mut buffer:[u8;1024] = [0u8;1024];
 
@@ -279,7 +277,12 @@ gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
     //IE BEARER Context
     //IE Recovery
 
-    make_gtpv2(GTPV2C_CREATE_SESSION_RSP, &buffer, peer, true, total_len as u8);
+    // let ret =
+    trace!("Thread Spwan 'make gtpv2' function");
+    tokio::spawn(
+        make_gtpv2( buffer, GTPV2C_CREATE_SESSION_RSP,
+            peer, true, total_len as u8, false)
+    );
 
     Ok(())
 }

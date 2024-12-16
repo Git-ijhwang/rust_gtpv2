@@ -1,5 +1,6 @@
 use core::result::Result;
 use std::string::String;
+use log::{debug, error, info, trace, warn};
 use crate::gtp_msg::*;
 use crate::gtpv2_type::*;
 use crate::gtp_dictionary::*;
@@ -88,12 +89,13 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
     let mut p : usize = 0;
     let mut teid= 0;
 
-    println!("data len : {}", data.len());
+    trace!("data len : {}", data.len());
 
     let mut hdr = Gtpv2CHeader::new();
     let version = (data[p] & 0xE0) >> 5;
     if version != GTP_VERSION {
         // send_gtpv2_version_not_supported(peer, peerip, peerport, seqnum);
+        error!("Version is not supported{}", version);
         return Err(format!("Version is not supported {}", version).to_string());
     }
 
@@ -106,12 +108,16 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
     let msg_type = data[p]; p += 1;
 
     match get_gtpv2_msg_type(msg_type) {
-        Ok(ret) => println!("This message is {}", ret.to_string()),
-        Err(_) => return Err(format!("Unknown Message type {}", msg_type).to_string()),
+        Ok(ret) => trace!("This message is {}", ret.to_string()),
+        Err(_) => {
+            error!("Unknown Message type {}", msg_type);
+            return Err(format!("Unknown Message type {}", msg_type).to_string());
+        }
     }
 
     let msg_len = u16::from_be_bytes([data[p], data[p + 1]]) as usize; p += 2;
     if msg_len + 4 != data.len() {
+        error!("Length Error (received: {}, expected: {}. discard", data.len(), msg_len+4);
         return Err(
             format!( "(GTPv2-RECV) Length error (received: {}, expected: {}). Discard.",
             data.len(), msg_len + 4)
@@ -131,6 +137,8 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
     hdr.s = seqnum;
 
     p+=4;
+
+    trace!("Added length: {} bytes", p);
 
     return Ok((hdr, p));
 }

@@ -11,7 +11,9 @@ mod validate_gtpv2;
 mod peers;
 mod ippool;
 mod session;
+mod dump;
 
+use std::fs;
 use std::thread;
 use std::io::Error;
 use std::sync::{Arc, Mutex};
@@ -20,6 +22,11 @@ use config::*;
 use core::result::Result;
 use thiserror::Error;
 use tokio::sync::RwLock;
+use chrono::Local;
+use fern::Dispatch;
+use std::path::Path;
+use std::{fs::File, fs::metadata,io::Write};
+use log::{debug, error, info, trace, warn};
 use crate::peers::*;
 use crate::udpsock::*;
 use crate::gtpv2_recv::*;
@@ -39,6 +46,53 @@ pub enum MyError {
 }
 
 
+fn check_and_roll_log(log_filename: &str) -> std::io::Result<File> {
+    let max_size = 10 * 1024 * 1024; // 10MB
+    let log_path = Path::new(log_filename);
+
+    if let Ok(file_metadata) = metadata(log_path) {
+        if file_metadata.len() > max_size {
+            let new_filename = format!("{}-{}", log_filename, Local::now().format("%Y-%m-%d-%H-%M-%S"));
+            println!("Log file size exceeded 10MB, rolling to: {}", new_filename);
+            return Ok(File::create(new_filename)?);
+        }
+    }
+    
+    File::create(log_filename)
+}
+
+async fn setup_logger() -> Result<(), fern::InitError> {
+
+    let log_dir = "logs";
+    if !fs::metadata(log_dir).is_ok() {
+        fs::create_dir(log_dir).unwrap(); // create directory for log file
+    }
+
+    let log_filename = format!("{}/logging_{}.log", log_dir, Local::now().format("%Y-%m-%d"));
+
+    // 파일 롤링 처리: 로그 파일 크기를 확인하여 10MB 초과 시 새로운 파일 생성
+    let log_file = check_and_roll_log(&log_filename).unwrap();
+
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {} {}] {}",
+                // humantime::format_rfc3339_seconds(SystemTime::now()),
+                Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Debug)
+        // .chain(std::io::stdout())
+        // .chain(fern::log_file(log_filename)?)
+        .chain(log_file)
+        .apply()?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error>
 {
@@ -53,8 +107,16 @@ async fn main() -> Result<(), Error>
         return Err(v);
     }
 
+    setup_logger().await;
+    // if let Err(v) = 
+    // {
+    //     // warn!("Loggin Setting Error.");
+    //     return Err();
+    // }
+
     // if let Err(v) =
-    load_gtp_dictionary("src/config/GTPv2_Dictionary.json");
+    load_gtp_dictionary("src/config/GTPv2_Dictionary.json").await ;
+    // print_dictionary().await;
     // {
     //     println!("Failed load dictionary file");
     //     return Err(v);
@@ -69,7 +131,23 @@ async fn main() -> Result<(), Error>
 
     // let msg_queue = MsgQue::new();
 
-    let recv_handle;
+    // peer_manage().await;
+    let peer_handle = tokio::spawn(async move {
+        println!("Peer Manage");
+        peer_manage().await;
+    });
+
+    {
+        // let mut queue_clone = SHARED_QUEUE.clone();
+        let queue_handle = tokio::spawn(async move {
+            println!("Queue Manage");
+            // SHARED_QUEUE.lock().await.check_timer().await;
+            check_timer().await;
+            // queue_clone.que_print();
+        });
+        // drop(queue_clone)
+    }
+    // let recv_handle;
     let config = CONFIG_MAP.read().await;
     let src_port = config.get("SrcPort").clone();
     drop(config);
@@ -78,12 +156,12 @@ async fn main() -> Result<(), Error>
         // let src_port = src_port.to_string();
         if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", src_port)) {
 
-            println!("Socket Successfully Created!: {:?}", recv_socket);
+            info!("Socket Successfully Created!: {:?}", recv_socket);
             // thread::spawn(move || gtpv2_recv_task(recv_socket, session_list, teid_list) );
                 // gtpv2_recv_task(&recv_socket, session_list.clone(), teid_list.clone()).await;
-            recv_handle = tokio::spawn(async move {
+            // recv_handle = tokio::spawn(async move {
                 gtpv2_recv_task(recv_socket).await;
-            });
+            // });
             // dummy(recv_socket);
         }
         else {
@@ -91,19 +169,8 @@ async fn main() -> Result<(), Error>
         }
     }
 
-    // peer_manage().await;
-    let peer_handle = tokio::spawn(async move {
-        println!("Peer Manage");
-        peer_manage().await;
-    });
 
-    let queue_clone = SHARED_QUEUE.clone();
-    let queue_handle = tokio::spawn(async move {
-        println!("Queue Manage");
-        queue_clone.lock().await.check_timer().await;
-    });
-
-    let _ = tokio::try_join!( peer_handle, queue_handle);
+    // let _ = tokio::try_join!( peer_handle, queue_handle);
 
     Ok(())
 }

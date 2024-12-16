@@ -76,6 +76,7 @@ lazy_static::lazy_static! {
 }
 
 
+#[derive(Clone )]
 pub struct MsgQue {
     queue: VecDeque<EncapPkt>,
 }
@@ -99,56 +100,12 @@ impl MsgQue  {
         self.queue.pop_front().unwrap()
     }
 
-    pub fn que_print(self) {
+     pub fn que_print(self) {
         // let queue = self.queue;
-        for x in &self.queue {
+        for x in self.queue {
             println!("{:?}", x.data);
         }
-
     }
-
-    pub async fn check_timer (&mut self ) {
-        let mut expired = vec![];
-
-        loop {
-            tokio::time::sleep(Duration::from_millis(100)).await; //sleep 100ms
-    
-            let now = tokio::time::Instant::now();
-
-            // let mut queue = self.queue.lock().unwrap();
-            for x in self.queue.iter_mut() {
-            // queue.iter_mut().for_each( |x: &mut EncapPkt| 
-                println!("Something is here");
-                if now.duration_since(x.send_time) > x.expiry {
-                    if x.send_count <= 3  {
-                        println!("Resend message");
-                        /* TODO: */
-                        x.send_time = Instant::now();
-                        x.send_count += 1;
-                        if x.msg_type == GTPV2C_ECHO_REQ {
-                            x.expiry = ECHO_TIMEOUT;
-                        }
-                        println!("Msg type: {}", x.msg_type);
-                    }
-                    else {
-                        expired.push(x.clone());
-                    }
-                }
-            }
-
-            for item in &mut expired {
-                let mut peer = get_peer(&item.peer_index).unwrap();
-                let buf = format!("Before: {}", peer.get_peer_status());
-                peer.deactivate_peer_status();
-
-                println!("{} After: {}",buf, peer.get_peer_status());
-                self.rm_peer(item.peer_index);
-            }
-
-            expired.clear();
-        }
-    }
-
      // check_timer를 비동기 태스크로 실행하는 함수
     //  pub fn start_timer_task(&mut self) {
      pub fn start_timer_task( self) {
@@ -156,10 +113,68 @@ impl MsgQue  {
 
         // 새로운 비동기 태스크로 check_timer 실행
         tokio::spawn(async move {
-            let mut queue_locked = queue.lock().await;
+            // let mut queue_locked = queue.lock().await;
             // self.check_timer().await; // 비동기적으로 실행
-            queue_locked.check_timer().await;
+            check_timer().await;
         });
     }
 
 }
+
+pub async fn check_timer () {
+
+    loop {
+        tokio::time::sleep(Duration::from_millis(100)).await; //sleep 100ms
+    
+        let mut expired = vec![];
+        let now = tokio::time::Instant::now();
+
+        {
+            let mut queue = SHARED_QUEUE.lock().await;
+
+            queue.queue.retain_mut(|x| {
+                // println!("Something is here");
+
+                if now.duration_since(x.send_time) > x.expiry {
+
+                    if x.send_count <= 3 {
+                        println!("Resent Count : {}", x.send_count);
+                        println!("Len: {}", x.data.len());
+                        println!("{:#?}", x.data);
+                        // 메시지 재전송
+                        x.send_time = tokio::time::Instant::now();
+                        x.send_count += 1;
+
+                        if x.msg_type == GTPV2C_ECHO_REQ {
+                            x.expiry = ECHO_TIMEOUT;
+                        }
+                        if x.msg_type == GTPV2C_CREATE_SESSION_REQ {
+                            x.expiry = ECHO_TIMEOUT;
+                        }
+                        println!("Msg type: {}", x.msg_type);
+
+                        true // 항목 유지
+                    } else {
+                        expired.push(x.clone()); // 만료된 항목 기록
+                        println!("Expire!!!");
+                        false // 큐에서 제거
+                    }
+                } else {
+                    true // 항목 유지
+                }
+            });
+        }
+
+        for item in &mut expired {
+            let mut peer = get_peer(&item.peer_index).unwrap();
+            let buf = format!("Before: {}", peer.get_peer_status());
+            peer.deactivate_peer_status();
+
+            println!("{} After: {}",buf, peer.get_peer_status());
+            SHARED_QUEUE.lock().await.rm_peer(item.peer_index);
+        }
+
+        expired.clear();
+    }
+}
+
