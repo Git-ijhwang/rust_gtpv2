@@ -1,6 +1,7 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use tokio::sync::RwLock;
 use std::collections::VecDeque;
 
 use crate::config::*;
@@ -31,8 +32,8 @@ pub fn print_ippool() {
 }
 
 
-pub fn prepare_ip_pool() {
-    let config = CONFIG_MAP.read().unwrap();
+pub async fn prepare_ip_pool() {
+    let config = CONFIG_MAP.read().await;
 
     let prefix = config.get("PREFIX_V4").unwrap();
     let prefix_addr = Ipv4Addr::from_str(&prefix).unwrap();

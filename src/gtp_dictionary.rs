@@ -1,5 +1,6 @@
 use std::fs::File;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use std::io::{BufReader, Error };
 use serde::{Deserialize, Serialize};
 use core::result::Result;
@@ -40,12 +41,11 @@ impl GtpMessage {
 
 lazy_static::lazy_static! {
     pub static ref GTP_DICTIONARY: Arc<RwLock<Vec<GtpMessage>>> =
-        Arc::new(RwLock::new( vec![]));
+        Arc::new(RwLock::new(vec![]));
 }
 
 
-pub fn load_gtp_dictionary(file_path: &str)
-// -> Vec<GtpMessage>
+pub async fn load_gtp_dictionary(file_path: &str)
 -> Result <(), Error>
 {
     let file = File::open(file_path)?;
@@ -54,14 +54,12 @@ pub fn load_gtp_dictionary(file_path: &str)
     let messages: Vec<GtpMessage> = serde_json::from_reader(reader)
         .map_err( |e| {
             eprintln!("Failed to parse JSON: {}", e);
-            println!("Error {}", e);
             e
         })?;
 
+    let mut dictionary = GTP_DICTIONARY.write().await;
     for message in messages {
-        if let Ok(mut dictionary) = GTP_DICTIONARY.write() {
-            dictionary.push(message)
-        }
+            dictionary.push(message);
     }
 
     Ok(())

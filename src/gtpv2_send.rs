@@ -50,23 +50,34 @@ pub async fn make_gtpv2(msg_type: u8, body: &[u8;1024],
 
     let pkt = EncapPkt::new(peer.ip, msg_type, buffer[..length + len as usize].to_vec());
 
-    let ret = send_udp_data(&buffer[..length+len as usize], &peer.ip.to_string(), peer.port);
-    match ret {
-        Ok(v) => {
-            if v <= 0 {
-                return  Err ("Fail to send message to peer".to_string());
-            }
-
+    {
+        //Only for Test
             let mut queue_locked = SHARED_QUEUE.lock().await;
             queue_locked.push(pkt);
 
             peer.update_last_echo_snd_time();
             peer.increase_count();
-
-            Ok(())
-        },
-        _ => return  Err ("Fail to send message to peer".to_string()),
+            println!("Message Send Failed Scenario!!");
     }
+    // let ret = send_udp_data(&buffer[..length+len as usize], &peer.ip.to_string(), peer.port);
+    // match ret {
+    //     Ok(v) => {
+    //         if v <= 0 {
+    //             println!("UDP Send failed");
+    //             return  Err ("Fail to send message to peer".to_string());
+    //         }
+
+    //         let mut queue_locked = SHARED_QUEUE.lock().await;
+    //         queue_locked.push(pkt);
+
+    //         peer.update_last_echo_snd_time();
+    //         peer.increase_count();
+
+    //         Ok(())
+    //     },
+    //     _ => return  Err ("Fail to send message to peer".to_string()),
+    // }
+    Ok(())
 
 }
 

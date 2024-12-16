@@ -222,9 +222,9 @@ fn is_group_ie(ie_type: u8, dictionary: &GtpMessage) -> bool {
         .map_or(false, |info| info.group_ie_info.is_some())
 }
 
-pub fn find_dictionary(msg_type: u8) -> Result<GtpMessage, String> {
+pub async fn find_dictionary(msg_type: u8) -> Result<GtpMessage, String> {
 
-    let dictionary = GTP_DICTIONARY.read().unwrap();
+    let dictionary = GTP_DICTIONARY.read().await;
 
     let result = dictionary 
             .iter()
@@ -371,8 +371,7 @@ pub fn interface_type_map(interface_type: u8) -> u8 {
 }
 
 
-fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>,
-            peer: & mut Peer, ies: IeMessage, teid: u32)
+fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 -> Result < (), String>
 {
     let imsi;
@@ -381,6 +380,7 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
     let mut pdn_index:u32 = 0;
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
+    println!("GET IE IMSI");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_IMSI) {
         // IMSI 데이터 복사 없이 참조로 처리
     
@@ -395,6 +395,7 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         return Err("IMSI IE not found.".to_string());
     }
 
+    println!("GET IE MSISDN");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_MSISDN) {
     
         match decode_tbcd(&lv[0].v) {
@@ -407,10 +408,14 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
     } else {
         return Err("MSISDN IE not found.".to_string());
     }
+    
+    println!("GET IE EBI");
 
     if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
         ebi = lv[0].v[0];
     }
+
+    println!("Start get FTEID");
 
     let mut gtpc_interfaces = vec![control_info::new()];
     let mut gtpu_interfaces = vec![control_info::new()];
@@ -439,6 +444,7 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         }
     }
 
+    println!("APN");
     let mut apn = String::new();
     if let Some(lv) = ies.get_ie(GTPV2C_IE_APN) {
         if lv[0].v.len() > 0{
@@ -450,6 +456,7 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         }
     }
 
+    println!("AMBR");
     let mut ambr_ul:u32 = 0;
     let mut ambr_dl:u32 = 0;
     if let Some(lv) = ies.get_ie(GTPV2C_IE_AMBR) {
@@ -457,6 +464,7 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         ambr_dl = u32::from_be_bytes( lv[0].v[4..8].try_into().expect("convert to ambr_ul problem"));
     }
 
+    println!("Bearer QoS");
     let mut bearer_qos = BearerQos::new();
     if let Some(lv) = ies.get_ie(GTPV2C_IE_BEARER_QOS) {
         for item in lv {
@@ -471,11 +479,12 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
 
 
     if teid == 0 { //Initial Attach
+        println!("New session");
         let teid = generate_teid();
 
-        teid_list.lock().unwrap().add_teid(teid.unwrap(), &imsi);
+        TEID_LIST.lock().unwrap().add_teid(teid.unwrap(), &imsi);
 
-        let locked_sessionlist = session_list.lock().unwrap();
+        let locked_sessionlist = SESSION_LIST.lock().unwrap();
         let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
         let arc_session;
 
@@ -533,19 +542,23 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         }
 
         drop(locked_sessionlist);
-        gtp_send_create_session_response(session_list.clone(), peer.clone(), &imsi.clone(), pdn_index as usize);
+        println!("Go! Response");
+
+        gtp_send_create_session_response(peer.clone(), &imsi.clone(), pdn_index as usize);
 
     }
     else { // Multiple PDN Attach 
-        let locked_session = session_list.lock().unwrap();
+        println!("Already Exist Session");
+        let locked_session = SESSION_LIST.lock().unwrap();
         let session = locked_session.find_session_by_imsi(&imsi);
 
         match session {
             Some(session) => {
-                let sesion_locked = session.lock().unwrap();
+                let session_locked = session.lock().unwrap();
                 // if sesion_locked.teid != teid {
                     //Send Reject message
                 // }
+                drop(session_locked);
             }
 
             _ => {
@@ -553,32 +566,34 @@ fn recv_crte_sess_req(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<S
         }
 
 
-        match teid_list.lock().unwrap().find_session_by_teid(&teid) {
+        match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
             Some(session) => {
-                let sess = session.lock().unwrap();
+                let session_locked = session.lock().unwrap();
+                drop(session_locked);
             },
             _ => return Err("Error".to_string()),
         }
+        drop(locked_session);
     }
 
     Ok(())
 }
 
 
-fn pgw_recv(teid_list: Arc<Mutex<TeidList>>, session_list: Arc<Mutex<SessionList>>,
-        peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
+fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
 {
     match msg_type {
         GTPV2C_CREATE_SESSION_REQ => {
-            recv_crte_sess_req(teid_list, session_list, peer, ies, teid);
+            println!("This is crte sess req");
+            recv_crte_sess_req( peer, ies, teid);
         }
         _ => {}
     }
 }
 
 
-pub fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
-    session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>,
+pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
+    // session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>,
 )  -> Result<(), String> {
     println!("Processed GTPv2 data.");
     
@@ -602,11 +617,10 @@ pub fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
     }
 
     // Get dictionary based on receive message type
-    let dictionary = GTP_DICTIONARY.read().unwrap();
+    let dictionary = GTP_DICTIONARY.read().await;
 
     let result = dictionary 
-            .iter()
-            .find(|msg | msg.msg_type == rcv_msg_type )
+            .iter().find(|msg | msg.msg_type == rcv_msg_type )
             .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
     
     match result {
@@ -625,19 +639,21 @@ pub fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
     //get IE value
     let ies = get_ie_value(&_data[hdr_len..]);
 
-    pgw_recv(teid_list, session_list, peer, ies, rcv_msg_type, teid);
+    pgw_recv( peer, ies, rcv_msg_type, teid);
 
     Ok(())
 }
 
+// pub async fn gtpv2_recv_task() {
+// }
+// pub async fn gtpv2_recv_task(socket: &UdpSocket, session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>) {
 
-pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>) {
+pub async fn gtpv2_recv_task(socket: UdpSocket) {
     let mut buf = [0u8; BUFSIZ];
     let timeout = Duration::from_millis(1000);
+    println!("Start Recv Task");
 
     loop {
-        println!("Start Recv Task");
-
         socket.set_read_timeout(Some(timeout)).unwrap();
 
         match socket.recv_from(&mut buf) {
@@ -647,6 +663,7 @@ pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>,
                     let sin_port = addr.port();
 
                     /* Only for TEST */
+                    // let sin_addr = &Ipv4Addr::from_str("10.10.1.71").ok();
                     let sin_addr = &Ipv4Addr::new(10,10,1,71);
                     match get_peer(sin_addr) {
                         Err(_) => {
@@ -654,15 +671,18 @@ pub fn gtpv2_recv_task(socket: UdpSocket, session_list: Arc<Mutex<SessionList>>,
                         } 
 
                         Ok(mut peer) => {
-                            _ = recv_gtpv2(&buf[..nbyte], &mut peer, session_list.clone(), teid_list.clone());
+                            _ = recv_gtpv2(&buf[..nbyte], &mut peer ).await;
+                            // _ = recv_gtpv2(&buf[..nbyte], &mut peer, session_list.clone(), teid_list.clone()).await;
                         }
                     }
                 }
             }
+
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 // Timeout occurred, continue to next iteration
                 continue;
             }
+
             Err(e) => {
                 println!("Error receiving data: {:?}", e);
                 break;

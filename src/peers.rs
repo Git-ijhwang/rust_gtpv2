@@ -1,11 +1,11 @@
-use std::net::AddrParseError;
-use std::net::Ipv4Addr;
-use std::str::FromStr;
 use std::sync::Mutex;
+use std::str::FromStr;
+use std::net::Ipv4Addr;
 use std::time::Instant;
 use std::collections::HashMap;
 use lazy_static::lazy_static;
 use tokio::time::{self, Duration};
+use tokio::sync::RwLock;
 use crate::gtpv2_type::*;
 use crate::gtpv2_send::*;
 use crate::config::*;
@@ -131,18 +131,18 @@ impl Peer {
 }
 
 
-pub fn create_peer () {
-    let peers = PEER_MAP.read().unwrap();
+pub async fn create_peer () {
+    let peers = PEER_MAP.read().await;
 
     for (key, value) in peers.iter() {
         let parts: Vec<&str> = value.split(':').collect();
         let ip = Ipv4Addr::from_str(parts[0]).unwrap();
         let port = u16::from_str(parts[1]).unwrap();
 
-        let conf = CONFIG_MAP.read().unwrap();
+        let conf = CONFIG_MAP.read();
         let mut peerlist = GTP2_PEER.lock().unwrap();
         let mut peer = Peer::new(ip, port, key.to_string());
-        let addr = conf.get("Addr").unwrap();
+        let addr = conf.await.get("Addr").unwrap();
         if let Ok(ip) = Ipv4Addr::from_str(&addr) {
             peer.tseq = u32::from(ip) ;
         }
@@ -154,26 +154,8 @@ pub fn create_peer () {
         // peer.tseq = tseq;
         peerlist.insert(u32::from(peer.ip), peer);
     }
-
-    // let peerlist = GTP2_PEER.lock().unwrap();
-
-    // peerlist.iter().for_each(|x| {
-    //     println!("{:?}", x);
-    // });
 }
 
-
-// pub fn get_mut_peer(ip: &Ipv4Addr) -> Result<&mut Peer, ()> {
-//     let list = GTP2_PEER.lock().unwrap();
-//     let key = u32::from(*ip).into();
-
-//     if let Some(peer) = list.get(&key) {
-//         Ok( &mut peer)
-//     }
-//     else {
-//         Err(())
-//     }
-// }
 
 pub fn get_peer(ip: &Ipv4Addr) -> Result<Peer, ()> {
     let list = GTP2_PEER.lock().unwrap();
@@ -189,7 +171,8 @@ pub fn get_peer(ip: &Ipv4Addr) -> Result<Peer, ()> {
 
 pub async fn peer_manage()
 {
-    let config = CONFIG_MAP.read().unwrap();
+    // let config = CONFIG_MAP.read().unwrap().await;
+    let config = CONFIG_MAP.read().await;
 
     let timeout     = config.get("GTPv2_MSG_TIMEOUT").unwrap().parse::<u8>().unwrap() ;
     let rexmit_cnt  = config.get("GTPv2_RETRANSMIT_COUNT").unwrap().parse::<u8>().unwrap() ;

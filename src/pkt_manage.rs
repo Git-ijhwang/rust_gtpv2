@@ -19,6 +19,7 @@ pub struct EncapPkt {
     pub data:       Arc<[u8]>,
 }
 
+
 impl Clone for EncapPkt {
     fn clone(&self) -> Self {
         EncapPkt {
@@ -32,6 +33,7 @@ impl Clone for EncapPkt {
         }
     }
 }
+
 
 impl EncapPkt {
     pub fn new(index: Ipv4Addr, msg_type: u8, data: Vec<u8>) -> Self {
@@ -73,6 +75,7 @@ lazy_static::lazy_static! {
     pub static ref SHARED_QUEUE: Arc<Mutex<MsgQue>> = Arc::new(Mutex::new(MsgQue::new()));
 }
 
+
 pub struct MsgQue {
     queue: VecDeque<EncapPkt>,
 }
@@ -107,30 +110,31 @@ impl MsgQue  {
     pub async fn check_timer (&mut self ) {
         let mut expired = vec![];
 
-
         loop {
             tokio::time::sleep(Duration::from_millis(100)).await; //sleep 100ms
-
+    
             let now = tokio::time::Instant::now();
 
-                // let mut queue = self.queue.lock().unwrap();
-                for x in self.queue.iter_mut() {
+            // let mut queue = self.queue.lock().unwrap();
+            for x in self.queue.iter_mut() {
             // queue.iter_mut().for_each( |x: &mut EncapPkt| 
-                    if now.duration_since(x.send_time) > x.expiry {
-                        if x.send_count <= 3  {
-                            println!("Resend message");
-                            /* TODO: */
-                            x.send_time = Instant::now();
-                            x.send_count += 1;
-                            if x.msg_type == GTPV2C_ECHO_REQ {
-                                x.expiry = ECHO_TIMEOUT;
-                            }
+                println!("Something is here");
+                if now.duration_since(x.send_time) > x.expiry {
+                    if x.send_count <= 3  {
+                        println!("Resend message");
+                        /* TODO: */
+                        x.send_time = Instant::now();
+                        x.send_count += 1;
+                        if x.msg_type == GTPV2C_ECHO_REQ {
+                            x.expiry = ECHO_TIMEOUT;
                         }
-                        else {
-                            expired.push(x.clone());
-                        }
+                        println!("Msg type: {}", x.msg_type);
+                    }
+                    else {
+                        expired.push(x.clone());
                     }
                 }
+            }
 
             for item in &mut expired {
                 let mut peer = get_peer(&item.peer_index).unwrap();

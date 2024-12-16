@@ -236,21 +236,28 @@ pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(),
 }
 
 
-pub async fn gtp_send_create_session_response
-    (session_list: Arc<Mutex<SessionList>>, peer:Peer, imsi:&String, pdn_index: usize)
+pub  fn
+gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
 -> Result<(), String>
 {
-    let locked_sessionlist = session_list.lock().unwrap();
+    println!("get session list");
+    let locked_sessionlist = SESSION_LIST.lock().unwrap();
+
+    println!("get session ");
     let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
     let session;
 
     // Get Session.
     if let Some(session_arc) = locked_session {
+        println!("111");
         session = session_arc.lock().unwrap().clone();
     }
     else {
+        println!("Error?");
         return Err("Error No session".to_string());
     }
+
+    println!("Start Create Session Response Process.");
 
     let mut buffer:[u8;1024] = [0u8;1024];
 

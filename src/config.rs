@@ -3,7 +3,9 @@ use std::io;
 use std::io::Error;
 use std::io::prelude::*;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
 // use std::sync::RwLockWriteGuard;
 use core::result::Result;
 
@@ -60,7 +62,7 @@ impl ConfigMap
 }
 
 
-pub fn read_conf (path: &str, peer: bool)
+pub async fn read_conf (path: &str, peer: bool)
         -> Result<(), Error>
 {
     // let mut config;
@@ -69,10 +71,10 @@ pub fn read_conf (path: &str, peer: bool)
     let reader = io::BufReader::new(file);
 
     let mut config = if peer {
-        PEER_MAP.write().unwrap()
+        PEER_MAP.write().await
     }
     else {
-        CONFIG_MAP.write().unwrap()
+        CONFIG_MAP.write().await
     };
 
     for line in reader.lines() {

@@ -7,15 +7,15 @@ use std::sync::{Arc, RwLock, Mutex};
 
 use crate::Peer;
 
-// lazy_static::lazy_static! {
-//     pub static ref TEID_LIST: Arc<Mutex<TeidList>> =
-//         Arc::new(Mutex::new(TeidList::new()));
-// }
+lazy_static::lazy_static! {
+    pub static ref TEID_LIST: Arc<Mutex<TeidList>> =
+        Arc::new(Mutex::new(TeidList::new()));
+}
 
-// lazy_static::lazy_static! {
-//     pub static ref SESSION: Arc<RwLock<SessionList>> =
-//         Arc::new( RwLock::new( SessionList::new()));
-// }
+lazy_static::lazy_static! {
+    pub static ref SESSION_LIST: Arc<Mutex<SessionList>> =
+        Arc::new( Mutex::new( SessionList::new()));
+}
 
 
 #[derive(Debug, Clone)]
