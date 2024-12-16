@@ -1,11 +1,7 @@
 use rand::Rng;
-use std::hash::Hash;
 use dashmap::DashMap;
 use std::net::Ipv4Addr;
-use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
-
-use crate::Peer;
 
 lazy_static::lazy_static! {
     pub static ref TEID_LIST: Arc<Mutex<TeidList>> =
@@ -200,8 +196,6 @@ impl SessionList {
         self.sess_map.remove(imsi);
     }
 }
-
-
 
 
 pub fn generate_teid() -> Option<u32> {

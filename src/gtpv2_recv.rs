@@ -212,7 +212,7 @@ fn send_gtpv2_version_not_supported(
     _peer: Arc<Mutex<Gtpv2Peer>>, _peerip: u32, _peerport: u16, _seqnum: u32
 ) {
     // Example function to send version not supported message
-    println!("Sent version not supported message.");
+    info!("Sent version not supported message.");
 }
 
 
@@ -426,6 +426,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
     trace!("Start get FTEID");
     let mut gtpc_interfaces = vec![control_info::new()];
     let mut gtpu_interfaces = vec![control_info::new()];
+
     if let Some(lv) = ies.get_ie(GTPV2C_IE_FTEID) {
         for item in lv {
             let mut info  = control_info::new();
@@ -567,7 +568,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
     }
     else { // Multiple PDN Attach 
-        println!("Already Exist Session");
+        trace!("Already Exist Session");
         let locked_session = SESSION_LIST.lock().unwrap();
         let session = locked_session.find_session_by_imsi(&imsi);
 
@@ -606,7 +607,9 @@ async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
             trace!("This message is Create Session Request");
             recv_crte_sess_req( peer, ies, teid).await;
         }
-        _ => {}
+        _ => {
+            error!("Unknown Message type: {}", msg_type);
+        }
     }
 }
 
@@ -706,7 +709,6 @@ pub async fn gtpv2_recv_task(socket: UdpSocket) {
             }
 
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                error!(" Timeout occurred, continue to next iteration ");
                 continue;
             }
 

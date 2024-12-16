@@ -63,6 +63,7 @@ fn _enc_tbcd(input: &[u8], length: usize, output: &mut [u8])
     c
 }
 
+
 fn _enc_mccmnc(s: &[u8], n: usize, r: &mut Vec<u8>)
 -> usize {
     if !(n == 5 || n == 6) {
@@ -88,6 +89,7 @@ fn _enc_mccmnc(s: &[u8], n: usize, r: &mut Vec<u8>)
 
     c
 }
+
 
 pub fn gtpv2_add_ie_tv1<'a>( msg: &'a mut [u8;1024],
     ie_type: u8, instance: u8, value: u8, len: usize)
@@ -216,7 +218,7 @@ pub fn gtpv2_add_ie_cause( msg: &mut [u8;1024],
 
 
 pub fn gtpv2_add_ie_paa( msg: &mut [u8;1024], instance: u8,
-            pdn_type: u8, addr: Ipv4Addr)
+    pdn_type: u8, addr: Ipv4Addr)
 -> usize {
     let mut buf = [0u8; 4];
     let mut len = 0;
@@ -241,11 +243,13 @@ pub fn gtpv2_add_ie_tbcd( msg: &mut [u8; 1024],
     
     let len = _enc_tbcd(value, value.len(), &mut buf);
     if len <= 0 {
+        error!("Fail to encode the TBCD");
         return 0;
     }
 
     gtpv2_add_ie_tlv(msg, msg_type, instance, &buf[..len], len )
 }
+
 
 pub fn gtpv2_add_ie_mccmnc( msg: &mut [u8; 1024], 
     msg_type: u8, instance: u8, value: &[u8])
@@ -254,6 +258,7 @@ pub fn gtpv2_add_ie_mccmnc( msg: &mut [u8; 1024],
 
     let len = _enc_mccmnc(value, value.len(), &mut buf);
     if len <= 0 {
+        error!("Fail to encode the MCCMNC");
         return 0;
     }
 

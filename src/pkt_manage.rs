@@ -3,6 +3,7 @@ use std::sync::Arc ;
 use tokio::sync::Mutex;
 use std::net::Ipv4Addr;
 use std::collections::VecDeque;
+use log::{debug, error, info, trace, warn};
 
 use crate::gtpv2_type::*;
 use crate::peers::*;
@@ -133,7 +134,7 @@ pub async fn check_timer () {
             let mut queue = SHARED_QUEUE.lock().await;
 
             queue.queue.retain_mut(|x| {
-                // println!("Something is here");
+                info!("Something is here");
 
                 if now.duration_since(x.send_time) > x.expiry {
 
@@ -151,12 +152,12 @@ pub async fn check_timer () {
                         if x.msg_type == GTPV2C_CREATE_SESSION_REQ {
                             x.expiry = ECHO_TIMEOUT;
                         }
-                        println!("Msg type: {}", x.msg_type);
+                        info!("Msg type: {}", x.msg_type);
 
                         true // 항목 유지
                     } else {
                         expired.push(x.clone()); // 만료된 항목 기록
-                        println!("Expire!!!");
+                        error!("Expire!!!");
                         false // 큐에서 제거
                     }
                 } else {
@@ -170,11 +171,10 @@ pub async fn check_timer () {
             let buf = format!("Before: {}", peer.get_peer_status());
             peer.deactivate_peer_status();
 
-            println!("{} After: {}",buf, peer.get_peer_status());
+            info!("{} After: {}",buf, peer.get_peer_status());
             SHARED_QUEUE.lock().await.rm_peer(item.peer_index);
         }
 
         expired.clear();
     }
 }
-

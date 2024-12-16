@@ -133,14 +133,14 @@ async fn main() -> Result<(), Error>
 
     // peer_manage().await;
     let peer_handle = tokio::spawn(async move {
-        println!("Peer Manage");
+        info!("Peer Manage");
         peer_manage().await;
     });
 
     {
         // let mut queue_clone = SHARED_QUEUE.clone();
         let queue_handle = tokio::spawn(async move {
-            println!("Queue Manage");
+            info!("Queue Manage");
             // SHARED_QUEUE.lock().await.check_timer().await;
             check_timer().await;
             // queue_clone.que_print();

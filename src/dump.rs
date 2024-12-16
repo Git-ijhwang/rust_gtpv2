@@ -3,7 +3,7 @@ use log::{info, error, warn};
 pub fn print_hex(buffer: &[u8], length: usize) {
     let length = length.min(buffer.len());
 
-    info!("Message DUMP ({} Bytes)",length);
+    info!("\nMessage DUMP ({} Bytes)",length);
     info!("===================================");
 
     for i in (0..length).step_by(16) {

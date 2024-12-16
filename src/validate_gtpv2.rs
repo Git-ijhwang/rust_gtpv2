@@ -14,6 +14,7 @@ fn validate_ie(expected_ie: &IeInfo, ies: &[(u8, usize, Vec<(u8, usize)>)])
 
     match expected_ie.presence.as_str() {
         "MANDATORY" if matches.next().is_none() => {
+            debug!("Mandatory IE {}(0x{:x}) is missing",expected_ie.ie_type, expected_ie.ie_type);
             return Err(format!("Mandatory IE {}(0x{:x}) is missing",expected_ie.ie_type, expected_ie.ie_type)); 
         }
         "CONTIDIONAL" | "CONTIDIONAL_OPTION" | "OPTIONAL" => {}
@@ -28,6 +29,8 @@ fn validate_ie(expected_ie: &IeInfo, ies: &[(u8, usize, Vec<(u8, usize)>)])
                 validate_group_ie(group_info, nested_ies, expected_ie.ie_type)?;
             }
         else {
+            error!("Mandatory Group IE {} [0x{:x}] is missing",
+                expected_ie.ie_type, expected_ie.ie_type);
             return Err(format! ( "Mandatory Group IE {}(0x{:x}) is missing",
                 expected_ie.ie_type, expected_ie.ie_type));
         }
@@ -37,30 +40,37 @@ fn validate_ie(expected_ie: &IeInfo, ies: &[(u8, usize, Vec<(u8, usize)>)])
 }
 
 
-fn validate_group_ie(
-    group_info: &[IeInfo], nested_ies: &Vec<(u8, usize)>, group_ie_type: u8)
+fn validate_group_ie( group_info: &[IeInfo],
+    nested_ies: &Vec<(u8, usize)>, group_ie_type: u8)
 -> Result<(), String> {
 
     for group_ie in group_info {
         let is_gie_present = nested_ies.iter().any(|(ie_type, _)| *ie_type  == group_ie.ie_type);
         if group_ie.presence == "MANDATORY" && !is_gie_present {
+            error!("Mandatory Group IE {}(0x{:x}) of {} is missing",
+                group_ie.ie_type, group_ie.ie_type, group_ie_type); 
             return Err(format!("Mandatory Group IE {}(0x{:x}) of {} is missing",
                 group_ie.ie_type, group_ie.ie_type, group_ie_type)); 
         }
     }
+
     Ok(())
 }
 
 
 pub fn
-validate_length(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMessage)
+validate_length(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>,
+    msg_dictionary: &GtpMessage)
 -> Result<bool, String> {
 
     for expected_ie in &msg_dictionary.ie_list {
         let ret = validate_ie(expected_ie, &ies );
         match ret {
             Ok(_) => {},
-            Err(_) => return Err ("IE Validation fail".to_string()),
+            Err(_) => {
+                error("IE Validation fail");
+                return Err ("IE Validation fail".to_string());
+            }
         }
     }
 
@@ -71,8 +81,11 @@ validate_length(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>, msg_dictionary: &GtpMe
         if let Some(ie_def) =
             msg_dictionary.ie_list.iter().find(|def| def.ie_type == *ie_type ) {
             if ie_length < &ie_def.min_length || ie_length > &ie_def.max_length {
-                return Err(format!(
-                    "IE {} [{}] length {} is out of bounds (min: {}, max: {})",
+                error!( "IE {} [{}] length {} is out of bounds (min: {}, max: {})",
+                    ie_map.ie_type_to_string(*ie_type), ie_type,
+                    ie_length, ie_def.min_length, ie_def.max_length);
+
+                return Err( format!( "IE {} [{}] length {} is out of bounds (min: {}, max: {})",
                     ie_map.ie_type_to_string(*ie_type), ie_type,
                     ie_length, ie_def.min_length, ie_def.max_length)); 
             }
@@ -126,20 +139,19 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
 
     if tflag {
         teid = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]);
-        p+=4;
+        p += 4;
     };
 
     seqnum = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]) >> 8;
 
-    hdr.t = msg_type;
-    hdr.l = msg_len as u16;
+    hdr.t    = msg_type;
+    hdr.l    = msg_len as u16;
     hdr.teid = teid;
-    hdr.s = seqnum;
+    hdr.s    = seqnum;
 
-    p+=4;
+    p += 4;
 
     trace!("Added length: {} bytes", p);
-
     return Ok((hdr, p));
 }
 
@@ -152,7 +164,7 @@ get_teid_from_header (data: &[u8])  -> u32
     let mut teid: u32 = 0;
 
     let tflag = (data[p] & GTPV2_T_FLAG) != 0;
-    p+=4;
+    p += 4;
 
     if tflag {
         teid = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]);
@@ -160,4 +172,3 @@ get_teid_from_header (data: &[u8])  -> u32
 
     return teid;
 }
-

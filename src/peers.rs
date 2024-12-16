@@ -126,7 +126,7 @@ impl Peer {
 
     pub fn print() {
         let list = GTP2_PEER.lock().unwrap();
-        println!("{:#?}", list);
+        info!("{:#?}", list);
     }
 
 }
@@ -163,9 +163,11 @@ pub fn get_peer(ip: &Ipv4Addr) -> Result<Peer, ()> {
     let key = u32::from(*ip).into();
 
     if let Some(peer) = list.get(&key) {
+        info!("Success get peer for {}", *ip);
         Ok( peer.clone())
     }
     else {
+        error!("Fail get peer for {}", *ip);
         Err(())
     }
 }

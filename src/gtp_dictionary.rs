@@ -1,9 +1,10 @@
 use std::fs::File;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use core::result::Result;
 use std::io::{BufReader, Error };
 use serde::{Deserialize, Serialize};
-use core::result::Result;
+use log::{debug, error, info, trace, warn};
 
 // GTP Message Structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -37,7 +38,6 @@ impl GtpMessage {
             ie_list:    Vec::new(),
         }
     }
-
 }
 
 lazy_static::lazy_static! {
@@ -45,9 +45,11 @@ lazy_static::lazy_static! {
         Arc::new(RwLock::new(vec![]));
 }
 
-    pub async fn print_dictionary () {
-        println!("{:#?}",GTP_DICTIONARY.read().await.clone());
-    }
+
+pub async fn print_dictionary () {
+    info!("{:#?}",GTP_DICTIONARY.read().await.clone());
+}
+
 
 pub async fn load_gtp_dictionary(file_path: &str)
 -> Result <(), Error>
@@ -57,6 +59,7 @@ pub async fn load_gtp_dictionary(file_path: &str)
 
     let messages: Vec<GtpMessage> = serde_json::from_reader(reader)
         .map_err( |e| {
+            error!("Failed to parse the JSON file: {}", e);
             eprintln!("Failed to parse JSON: {}", e);
             e
         })?;
