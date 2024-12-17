@@ -68,7 +68,7 @@ validate_length(ies: &Vec<(u8, usize, Vec<(u8, usize)>)>,
         match ret {
             Ok(_) => {},
             Err(_) => {
-                error("IE Validation fail");
+                error!("IE Validation fail");
                 return Err ("IE Validation fail".to_string());
             }
         }
@@ -114,6 +114,7 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
 
     //get Piggyback flag
     let pflag = (data[p] & GTPV2_P_FLAG) != 0;
+
     //get Teid flag
     let tflag = (data[p] & GTPV2_T_FLAG) != 0; p += 1;
 
@@ -131,8 +132,7 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
     let msg_len = u16::from_be_bytes([data[p], data[p + 1]]) as usize; p += 2;
     if msg_len + 4 != data.len() {
         error!("Length Error (received: {}, expected: {}. discard", data.len(), msg_len+4);
-        return Err(
-            format!( "(GTPv2-RECV) Length error (received: {}, expected: {}). Discard.",
+        return Err( format!( "(GTPv2-RECV) Length error (received: {}, expected: {}). Discard.",
             data.len(), msg_len + 4)
         );
     }

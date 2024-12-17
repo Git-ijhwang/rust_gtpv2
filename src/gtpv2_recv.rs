@@ -418,12 +418,12 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         return Err("MSISDN IE not found.".to_string());
     }
     
-    trace!("GET IE EBI");
+    trace!("GET EBI IE");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
         ebi = lv[0].v[0];
     }
 
-    trace!("Start get FTEID");
+    trace!("GET FTEID IE");
     let mut gtpc_interfaces = vec![control_info::new()];
     let mut gtpu_interfaces = vec![control_info::new()];
 
@@ -453,7 +453,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         }
     }
 
-    trace!("APN");
+    trace!("GET APN IE");
     let mut apn = String::new();
     if let Some(lv) = ies.get_ie(GTPV2C_IE_APN) {
         if lv[0].v.len() > 0{
@@ -471,7 +471,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         }
     }
 
-    trace!("AMBR");
+    trace!("GET AMBR IE");
     let mut ambr_ul:u32 = 0;
     let mut ambr_dl:u32 = 0;
     if let Some(lv) = ies.get_ie(GTPV2C_IE_AMBR) {
@@ -479,7 +479,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         ambr_dl = u32::from_be_bytes( lv[0].v[4..8].try_into().expect("convert to ambr_ul problem"));
     }
 
-    trace!("Bearer QoS");
+    trace!("GET Bearer QoS IE");
     let mut bearer_qos = BearerQos::new();
     if let Some(lv) = ies.get_ie(GTPV2C_IE_BEARER_QOS) {
         for item in lv {
@@ -524,7 +524,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         let alloc_ip = allocate_ip();
         { //PDN
             let session = &mut arc_session.lock().unwrap();
-            let  vecpdn = &mut session.pdn;//.iter().any(|pdn_info| pdn_info.used == 0);
+            let vecpdn = &mut session.pdn;//.iter().any(|pdn_info| pdn_info.used == 0);
 
             pdn_index = vecpdn.len() as u32;
             if pdn_index < 3 {
@@ -563,7 +563,6 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         drop(locked_sessionlist);
 
-        trace!("Go! Response");
         gtp_send_create_session_response(peer.clone(), &imsi.clone(), pdn_index as usize).await;
 
     }

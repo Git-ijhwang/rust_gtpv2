@@ -22,6 +22,7 @@ pub struct IeInfo {
 pub struct GtpMessage {
     pub msg_type:   u8,
     pub msg_name:   String,
+    pub response:   Vec<u32>,
     pub ie_counts:  usize,
     pub ie_list:    Vec<IeInfo>,
 }
@@ -34,11 +35,13 @@ impl GtpMessage {
         Self {
             msg_type:   0,
             msg_name:   String::new(),
+            response:   Vec::new(),
             ie_counts:  0,
             ie_list:    Vec::new(),
         }
     }
 }
+
 
 lazy_static::lazy_static! {
     pub static ref GTP_DICTIONARY: Arc<RwLock<Vec<GtpMessage>>> =
@@ -69,5 +72,6 @@ pub async fn load_gtp_dictionary(file_path: &str)
             dictionary.push(message);
     }
 
+    info!("{:#?}", dictionary);
     Ok(())
 }
