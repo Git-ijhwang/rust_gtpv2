@@ -238,26 +238,42 @@ pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(),
 
 
 pub async fn
+gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
+-> Result<(), String>
+{
+    let mut buffer:[u8;1024] = [0u8;1024];
+
+    trace!("Start Delete Session Response ");
+    // let session = find_session_by_imsi(imsi.clone());
+
+    //IE CAUSE
+    let mut total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
+
+    trace!("Thread Spwan 'make gtpv2' function");
+    tokio::spawn(
+        make_gtpv2( buffer, GTPV2C_CREATE_SESSION_RSP,
+            peer, true, total_len as u8, false)
+    );
+
+    Ok(())
+}
+
+
+pub async fn
 gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
 -> Result<(), String>
 {
+    let mut buffer:[u8;1024] = [0u8;1024];
     trace!("Start Create Session Response ");
 
-    let locked_sessionlist = SESSION_LIST.lock().unwrap();
-    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
+    // let arc_session;
     let session;
-
-    trace!("Get Session.");
-    if let Some(session_arc) = locked_session {
-        trace!("Success to get session structure");
-        session = session_arc.lock().unwrap().clone();
+    match find_session_by_imsi(imsi.clone()) {
+        // Ok(sess) => arc_session = sess.lock().unwrap().clone(),
+        Ok(sess) => session = sess.lock().unwrap().clone(),
+        Err(error) => return Err(error),
     }
-    else {
-        error!(" Fail to find session");
-        return Err("Error No session".to_string());
-    }
-
-    let mut buffer:[u8;1024] = [0u8;1024];
+    // let session = arc_session.lock().unwrap().clone();
 
     //IE CAUSE
     let mut total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
@@ -277,7 +293,6 @@ gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
     //IE BEARER Context
     //IE Recovery
 
-    // let ret =
     trace!("Thread Spwan 'make gtpv2' function");
     tokio::spawn(
         make_gtpv2( buffer, GTPV2C_CREATE_SESSION_RSP,

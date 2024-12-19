@@ -2,6 +2,7 @@ use rand::Rng;
 use dashmap::DashMap;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, RwLock, Mutex};
+use log::{debug, error, info, trace, warn};
 
 lazy_static::lazy_static! {
     pub static ref TEID_LIST: Arc<Mutex<TeidList>> =
@@ -201,4 +202,111 @@ impl SessionList {
 pub fn generate_teid() -> Option<u32> {
     let mut rng = rand::thread_rng();
     Some(rng.gen()) // u32 랜덤 값 생성
+}
+
+pub fn get_imsi_by_teid(teid: u32) -> Result<String, String>
+{
+    let imsi;
+    trace!("Find Session by TEID");
+    match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
+        Some(session) => imsi = session.lock().unwrap().clone(),
+        _ => {
+            warn!("Fail to find session by TEID: {}", teid);
+            return Err("Error".to_string())
+        }
+    }
+
+    return Ok(imsi);
+}
+
+pub fn find_session_by_imsi(imsi: String) 
+-> Result<Arc<Mutex<Session>>, String>
+{
+    let locked_sessionlist = SESSION_LIST.lock().unwrap();
+    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
+    let arc_session;
+
+    match locked_session {
+        Some(value) => arc_session = value,
+        _ => {
+            warn!("Fail to find session by IMSI: {}", imsi);
+            return Err("Fail to find session by IMSI".to_string())
+        }
+
+    }
+    return Ok(arc_session);
+}
+
+pub fn find_session_or_create(imsi: String) 
+-> Arc<Mutex<Session>>
+{
+    let locked_sessionlist = SESSION_LIST.lock().unwrap();
+    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
+    let arc_session;
+
+    match locked_session {
+        Some(value) => arc_session = value,
+        _ => {
+            warn!("Fail to find session by IMSI: {} and create", imsi);
+            arc_session = locked_sessionlist.create_session(imsi.clone());
+        }
+    }
+    return arc_session;
+}
+
+pub fn check_pdn(session: &Session, lbi: u8) -> bool {
+    session.pdn.iter()
+    .any(|pdn| pdn.lbi == lbi)
+}
+
+pub fn check_bearer_by_lbi(session: &Session, lbi: u8) -> bool {
+    session.bearer.iter()
+    .any(|bearer| bearer.lbi == lbi)
+}
+
+pub fn check_bearer_by_ebi(session: &Session, ebi: u8) -> bool {
+    session.bearer.iter()
+    .any(|bearer| bearer.ebi == ebi)
+}
+
+pub fn find_pdn(session: &mut Session, ebi: u8)
+-> Option<&mut pdn_info>
+{
+    session.pdn.iter_mut()
+    .find(|pdn|pdn.lbi == ebi)
+}
+
+pub fn find_bearer(session: &mut Session, ebi: u8)
+-> Vec<&mut bearer_info>
+{
+    session.bearer
+    .iter_mut()
+    .find(|bearer|bearer.lbi == ebi)
+    .into_iter()
+    .collect()
+}
+
+
+pub fn delete_pdn_and_bearer(session: &mut Session, ebi: u8) {
+    if let Some(pdn_index) = session.pdn.iter().position(|pdn| pdn.lbi == ebi) {
+
+        let pdn = session.pdn.remove(pdn_index);
+        info!("Deleted pdn: {:?}", pdn);
+
+        // Bearer 삭제
+        let bearer_indices: Vec<usize> = session.bearer
+            .iter()
+            .enumerate()
+            .filter(|(_, bearer)| bearer.lbi == ebi)
+            .map(|(i, _)| i)
+            .collect();
+
+        for index in bearer_indices.into_iter().rev() {
+            let bearer = session.bearer.remove(index);
+            info!("Deleted bearer: {:?}", bearer);
+        }
+
+    } else {
+        info!("No pdn found with ebi: {}", ebi);
+    }
 }

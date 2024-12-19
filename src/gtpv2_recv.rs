@@ -362,8 +362,8 @@ pub fn get_ie_value(raw_data: &[u8])
 
 pub fn interface_type_map(interface_type: u8) -> u8 {
     match interface_type {
-        0..=5 | 15 | 16 | 19..=23 | 29 | 31 | 33 | 34 | 37..=39 | 41 => { 0 }
-        6..=14 | 17 | 18 | 24..=28 | 30 | 32 | 35 | 36 | 40 => { 1 }
+        0..=5 | 15 | 16 | 19..=23 | 29 | 31 | 33 | 34 | 37..=39 | 41 => { 0 } //GTP-C
+        6..=14 | 17 | 18 | 24..=28 | 30 | 32 | 35 | 36 | 40 => { 1 } //GTP-U
         _ => {
             println!("Unknown interface type");
             255 // 반환값으로 알 수 없는 타입을 명시
@@ -371,29 +371,84 @@ pub fn interface_type_map(interface_type: u8) -> u8 {
     }
 }
 
-async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32)
+
+async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 -> Result < (), String>
 {
+    let mut imsi: String;
     let mut ebi = 0;
     let mut pdn_index:u32 = 0;
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
-    trace!("Find Session by TEID");
-    // let locked_sessionlist = TEID_LIST.lock().unwrap();
-    // let locked_session = locked_sessionlist.find_session_by_teid(&teid);
-    // if let Some(session_arc) = locked_session {
-    //     let session = session_arc.lock().unwrap().clone();
-    // }
-    match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
-        Some(session) => {
-            // info!("Success to find a session [{:?}]",);
-            let imsi = session.lock().unwrap().clone();
-            println!("{:?}", imsi);
+    trace!("GET EBI IE");
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
+        ebi = lv[0].v[0];
+    }
+
+    match get_imsi_by_teid(teid) {
+        Ok(ret) => imsi = ret,
+        Err(error) => return Err(error),
+    }
+
+    let arc_session;
+
+    match find_session_by_imsi(imsi.clone()) {
+        Ok(session) => arc_session = session,
+        Err(error) => return Err(error),
+    }
+
+    let mut session = arc_session.lock().unwrap();
+    delete_pdn_and_bearer(&mut session, ebi);
+
+    gtp_send_delete_session_response(peer.clone(), &imsi.clone(), pdn_index as usize).await;
+
+    Ok(())
+}
+
+async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32)
+-> Result < (), String>
+{
+    let mut imsi: String;
+    let mut ebi = 0;
+    let mut pdn_index:u32 = 0;
+    let mut address = [Ipv4Addr::new(0,0,0,0); 48];
+
+    // let mut gtpc_interfaces = vec![control_info::new()];
+    let mut gtpu_interfaces = vec![control_info::new()];
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_FTEID) {
+        for item in lv {
+            let mut info  = control_info::new();
+            info.interface_type = item.v[0] & 0x3f;
+            info.teid = u32::from_be_bytes( item.v[1..5].try_into().expect("convert to teid problem") );
+            info.addr = Ipv4Addr::new( item.v[5], item.v[6], item.v[7], item.v[8]);
+
+            info!("Interface type: {}", info.interface_type);
+            info!("Interface teid: {}", info.teid);
+            info!("Interface addr: {}", info.addr);
+
+            if interface_type_map(info.interface_type) == 1 {
+                gtpu_interfaces.push(info);
+            }
         }
-        _ => {
-            warn!("Fail to find session by TEID: {}", teid);
-            return Err("Error".to_string())
-        }
+
+    }
+
+    match get_imsi_by_teid(teid) {
+        Ok(value) => imsi = value,
+        Err(error) => return Err(error),
+    }
+
+    let arc_session;
+
+    match find_session_by_imsi(imsi.clone()) {
+        Ok(session) => arc_session = session,
+        Err(error) => return Err(error),
+    }
+
+    trace!("Setting for Bearer");
+    { //Bearer
+            let session = &mut arc_session.lock().unwrap();
+            let vecbearer = &mut session.bearer;
     }
 
     Ok(())
@@ -522,25 +577,12 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
     if teid == 0 { //Initial Attach
         trace!("Create New session");
+
         let teid = generate_teid();
         trace!("Created TEID: 0x{:x?}", teid);
 
         TEID_LIST.lock().unwrap().add_teid(teid.unwrap(), &imsi);
-
-        let locked_sessionlist = SESSION_LIST.lock().unwrap();
-        let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
-        let arc_session;
-
-        match locked_session {
-            Some(value) => {
-                error!("Already session is exist Error");
-                arc_session = value;
-            }
-            _ => {
-                info!("Create Session");
-                arc_session = locked_sessionlist.create_session(imsi.clone());
-            }
-        }
+        let arc_session = find_session_or_create(imsi.clone());
 
         trace!("Session Setting");
         {
@@ -589,7 +631,6 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
             session.control = gtpc_interfaces;
         }
 
-        drop(locked_sessionlist);
 
         gtp_send_create_session_response(peer.clone(), &imsi.clone(), pdn_index as usize).await;
 
@@ -637,6 +678,10 @@ async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
         GTPV2C_MODIFY_BEARER_REQ => {
             trace!("This message is Modify Bearer Request");
             recv_modify_bearer_req( peer, ies, teid).await;
+        }
+        GTPV2C_DELETE_SESSION_REQ => {
+            trace!("This message is Delete Session Request");
+            recv_delete_session_req( peer, ies, teid).await;
         }
         _ => {
             error!("Unknown Message type: {}", msg_type);
