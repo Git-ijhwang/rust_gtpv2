@@ -138,7 +138,7 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
     }
 
     if tflag {
-        teid = u32::from_be_bytes([data[p], data[p+1], data[p+2], 0]);
+        teid = u32::from_be_bytes([data[p], data[p+1], data[p+2], data[p+3]]);
         p += 4;
     };
 

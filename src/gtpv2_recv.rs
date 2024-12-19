@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use log::{debug, error, info, trace, warn};
 
 use crate::gtp_dictionary::{self, *};
-use crate::validate_gtpv2::*;
+use crate::{session, validate_gtpv2::*};
 use crate::gtpv2_type::*;
 use crate::gtp_msg::*;
 use std::io::Error;
@@ -371,6 +371,33 @@ pub fn interface_type_map(interface_type: u8) -> u8 {
     }
 }
 
+async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32)
+-> Result < (), String>
+{
+    let mut ebi = 0;
+    let mut pdn_index:u32 = 0;
+    let mut address = [Ipv4Addr::new(0,0,0,0); 48];
+
+    trace!("Find Session by TEID");
+    // let locked_sessionlist = TEID_LIST.lock().unwrap();
+    // let locked_session = locked_sessionlist.find_session_by_teid(&teid);
+    // if let Some(session_arc) = locked_session {
+    //     let session = session_arc.lock().unwrap().clone();
+    // }
+    match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
+        Some(session) => {
+            // info!("Success to find a session [{:?}]",);
+            let imsi = session.lock().unwrap().clone();
+            println!("{:?}", imsi);
+        }
+        _ => {
+            warn!("Fail to find session by TEID: {}", teid);
+            return Err("Error".to_string())
+        }
+    }
+
+    Ok(())
+}
 
 async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 -> Result < (), String>
@@ -496,6 +523,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
     if teid == 0 { //Initial Attach
         trace!("Create New session");
         let teid = generate_teid();
+        trace!("Created TEID: 0x{:x?}", teid);
 
         TEID_LIST.lock().unwrap().add_teid(teid.unwrap(), &imsi);
 
@@ -606,6 +634,10 @@ async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
             trace!("This message is Create Session Request");
             recv_crte_sess_req( peer, ies, teid).await;
         }
+        GTPV2C_MODIFY_BEARER_REQ => {
+            trace!("This message is Modify Bearer Request");
+            recv_modify_bearer_req( peer, ies, teid).await;
+        }
         _ => {
             error!("Unknown Message type: {}", msg_type);
         }
@@ -639,6 +671,7 @@ pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
     }
 
     trace!("Get dictionary based on receive message type");
+    info!("Get dictionary based on receive message type");
     let dictionary = GTP_DICTIONARY.read().await;
 
     let result = dictionary 
@@ -691,7 +724,7 @@ pub async fn gtpv2_recv_task(socket: UdpSocket) {
                     let sin_port = addr.port();
 
                     /* Only for TEST */
-                    let sin_addr = &Ipv4Addr::new(10,10,1,71);
+                    let sin_addr = &Ipv4Addr::new(10,10,2,72);
                     trace!("sin_addr info {:?}", sin_addr);
 
                     match get_peer(sin_addr) {

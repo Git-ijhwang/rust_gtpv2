@@ -72,6 +72,6 @@ pub async fn load_gtp_dictionary(file_path: &str)
             dictionary.push(message);
     }
 
-    info!("{:#?}", dictionary);
+    // info!("{:#?}", dictionary);
     Ok(())
 }
