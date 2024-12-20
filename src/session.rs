@@ -88,22 +88,19 @@ pub struct bearer_info {
     // s5_u: teid_info_t /* SGW <-> PGW (GTP-U) */
 }
 impl bearer_info {
-    pub fn new(
-        used:bool, ebi:u8, lbi:u8, teid:u32, flag:u8, qci:u8,
-        mbr_ul: u32, mbr_dl: u32, gbr_ul: u32, gbr_dl: u32,
-    ) -> Self {
+    pub fn new() -> Self {
         bearer_info {
-            used,
-            ebi,
-            lbi,
-            teid,
+            used:   true,
+            ebi:    0,
+            lbi:    0,
+            teid:   0,
             // peerip: Ipv4Addr::new(0,0,0,0),
-            flag,
-            qci,
-            mbr_ul,
-            mbr_dl,
-            gbr_ul,
-            gbr_dl,
+            flag:   0,
+            qci:    0,
+            mbr_ul: 0,
+            mbr_dl: 0,
+            gbr_ul: 0,
+            gbr_dl: 0,
         }
     }
 }
@@ -122,7 +119,7 @@ pub struct pdn_info {
 impl pdn_info {
     pub fn new() -> Self {
         pdn_info {
-            used :   false,
+            used :   true,
             lbi :    0,
             ip :     Ipv4Addr::new(0,0,0,0),
             apn:     String::new(),
@@ -292,14 +289,14 @@ pub fn find_pdn(session: &mut Session, ebi: u8)
 }
 
 pub fn alloc_pdn(session: &mut Session, lbi: u8, alloc_ip: Ipv4Addr, ambr_dl: u32, ambr_ul: u32, apn:String)
--> Result<u32,String>
+-> Result<usize,String>
 {
-    let pdn_index = session.pdn.len() as u32;
+    let pdn_index = session.pdn.len();
     if pdn_index >= 3 {
         return Err("PDN is full".to_string());
     }
+
     let mut pdn : pdn_info = pdn_info::new();
-    pdn.used    = true;
     pdn.ip      = alloc_ip;
     pdn.ambr_dl = ambr_dl;
     pdn.ambr_ul = ambr_ul;
@@ -307,8 +304,35 @@ pub fn alloc_pdn(session: &mut Session, lbi: u8, alloc_ip: Ipv4Addr, ambr_dl: u3
 
     session.pdn.push(pdn);
 
-    Ok(session.pdn.len() as u32)
+    Ok(session.pdn.len())
 }
+
+
+pub fn alloc_bearer(session: &mut Session,
+    lbi: u8, ebi: u8, teid: u32, flag: u8, qci: u8,
+    mbr_ul: u32, mbr_dl: u32, gbr_ul: u32, gbr_dl: u32)
+-> Result<usize,String>
+{
+    let bearer_index = session.bearer.len();
+    if bearer_index >= 11 {
+        return Err("Bearer is full".to_string());
+    }
+
+    let mut bearer = bearer_info::new();
+    bearer.ebi=    ebi;
+    bearer.lbi=    lbi;
+    bearer.teid=   teid;
+    bearer.flag=   flag;
+    bearer.qci=    qci;
+    bearer.mbr_ul= mbr_ul;
+    bearer.mbr_dl= mbr_dl;
+    bearer.gbr_ul= gbr_ul;
+    bearer.gbr_dl= gbr_dl;
+
+    session.bearer.push(bearer);
+    Ok(session.bearer.len())
+}
+
 
 pub fn find_bearer(session: &mut Session, ebi: u8)
 -> Vec<&mut bearer_info>

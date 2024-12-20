@@ -458,7 +458,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
     let imsi;
     let msisdn;
     let mut ebi = 0;
-    let mut pdn_index:u32 = 0;
+    let mut pdn_index = 0;
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
     trace!("GET IE IMSI");
@@ -593,25 +593,25 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
-        alloc_pdn( &mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn);
+
+        trace!("Setting for PDN");
+        match alloc_pdn( &mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
+            Ok(value) => pdn_index = value,
+            Err(error) => return Err(error),
+        }
 
         trace!("Setting for Bearer");
-        { //Bearer
-            let vecbearer = &mut session.bearer;
-
-            let new_bearer = bearer_info::new(
-                true, ebi, ebi, gtpu_interfaces[0].teid,
-                bearer_qos.flag, bearer_qos.qci,
-                bearer_qos.mbr_ul, bearer_qos.mbr_dl,
-                bearer_qos.gbr_ul, bearer_qos.gbr_dl);
-
-            vecbearer.push(new_bearer);
-        }
+        alloc_bearer(&mut session,
+            ebi,
+            ebi,
+            gtpu_interfaces[0].teid,
+            bearer_qos.flag,
+            bearer_qos.qci,
+            bearer_qos.mbr_ul, bearer_qos.mbr_dl,
+            bearer_qos.gbr_ul, bearer_qos.gbr_dl);
 
         trace!("Control interface settings");
-        {
-            session.control.extend(gtpc_interfaces);
-        }
+        session.control.extend(gtpc_interfaces);
 
 
         gtp_send_create_session_response(peer.clone(), imsi, pdn_index as usize).await;
@@ -641,12 +641,23 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
 
-        alloc_pdn( &mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn);
+        trace!("Setting for PDN");
+        match alloc_pdn( &mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
+            Ok(value) => pdn_index = value,
+            Err(error) => return Err(error),
+        }
+
+        trace!("Setting for Bearer");
+        alloc_bearer(&mut session,
+            ebi, ebi, gtpu_interfaces[0].teid,
+            bearer_qos.flag, bearer_qos.qci,
+            bearer_qos.mbr_ul, bearer_qos.mbr_dl,
+            bearer_qos.gbr_ul, bearer_qos.gbr_dl);
 
         trace!("Control interface settings");
-        {
-            session.control.extend(gtpc_interfaces);
-        }
+        session.control.extend(gtpc_interfaces);
+
+        gtp_send_create_session_response(peer.clone(), imsi, pdn_index as usize).await;
     }
 
     Ok(())
