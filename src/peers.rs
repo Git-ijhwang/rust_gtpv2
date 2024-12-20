@@ -6,13 +6,8 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use tokio::time::{self, Duration};
 use log::{debug, error, info, trace, warn};
-use tokio::sync::RwLock;
 use crate::gtpv2_type::*;
-use crate::gtpv2_send::*;
 use crate::config::*;
-use crate::gtp_msg::*;
-// use std::sync::{Arc, Mutex};
-use std::sync::MutexGuard;
 extern crate lazy_static;
 
 
@@ -128,7 +123,6 @@ impl Peer {
         let list = GTP2_PEER.lock().unwrap();
         info!("{:#?}", list);
     }
-
 }
 
 
@@ -171,6 +165,7 @@ pub fn get_peer(ip: &Ipv4Addr) -> Result<Peer, ()> {
         Err(())
     }
 }
+
 
 pub async fn peer_manage()
 {

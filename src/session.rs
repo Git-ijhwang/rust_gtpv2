@@ -30,7 +30,8 @@ pub struct SessionList {
 
 
 impl SessionList {
-    fn find_session_by_imsi(&self, imsi: String) -> Result<Session, String> {
+    fn find_session_by_imsi(&self, imsi: String)
+        -> Result<Session, String> {
         match self.sess_map.get(&imsi) {
             Some(v) => Ok(v.clone()),
             _ => Err ("The session is not exist".to_string()),
@@ -193,26 +194,13 @@ impl SessionList {
         }
     }
 
-    // }
-
-    /*
-    // pub fn mut_session_by_imsi(&self, imsi: &str) -> Option<Arc<Session>> {
-    //     self.sess_map.get_mut(imsi)
-    // }
-    */
 
     pub fn create_session(&self, imsi:String) -> Session {
-    //     // let mut session = Arc::new(Mutex::new(Session::new()));
         let mut session = Session::new();
         session.imsi = imsi.clone();
-        // self.sess_map.insert(imsi,session.clone());
 
         session
     }
-
-    // pub fn del_session(&self, imsi: &str) {
-    //     self.sess_map.remove(imsi);
-    // }
 }
 
 
@@ -235,6 +223,7 @@ pub fn get_imsi_by_teid(teid: u32) -> Result<String, String>
     }
 }
 
+
 pub fn find_session_by_imsi(imsi: String) 
 -> Result<Session, String>
 {
@@ -250,6 +239,7 @@ pub fn find_session_by_imsi(imsi: String)
 
     }
 }
+
 
 pub fn find_session_or_create(imsi: String) 
 -> Result<Session, String>
@@ -267,6 +257,7 @@ pub fn find_session_or_create(imsi: String)
         }
     }
 }
+
 
 pub fn check_pdn(session: &Session, lbi: u8) -> bool {
     session.pdn.iter()
@@ -286,6 +277,13 @@ pub fn check_bearer_by_ebi(session: &Session, ebi: u8) -> bool {
 }
 
 
+pub fn find_empty_pdn(session: &mut Session)
+-> Option<&mut pdn_info>
+{
+    session.pdn.iter_mut()
+    .find(|pdn|pdn.used == false)
+}
+
 pub fn find_pdn(session: &mut Session, ebi: u8)
 -> Option<&mut pdn_info>
 {
@@ -293,6 +291,24 @@ pub fn find_pdn(session: &mut Session, ebi: u8)
     .find(|pdn|pdn.lbi == ebi)
 }
 
+pub fn alloc_pdn(session: &mut Session, lbi: u8, alloc_ip: Ipv4Addr, ambr_dl: u32, ambr_ul: u32, apn:String)
+-> Result<u32,String>
+{
+    let pdn_index = session.pdn.len() as u32;
+    if pdn_index >= 3 {
+        return Err("PDN is full".to_string());
+    }
+    let mut pdn : pdn_info = pdn_info::new();
+    pdn.used    = true;
+    pdn.ip      = alloc_ip;
+    pdn.ambr_dl = ambr_dl;
+    pdn.ambr_ul = ambr_ul;
+    pdn.apn     = apn;
+
+    session.pdn.push(pdn);
+
+    Ok(session.pdn.len() as u32)
+}
 
 pub fn find_bearer(session: &mut Session, ebi: u8)
 -> Vec<&mut bearer_info>

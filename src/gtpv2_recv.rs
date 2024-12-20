@@ -593,23 +593,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
-        { //PDN
-            let vecpdn = &mut session.pdn;//.iter().any(|pdn_info| pdn_info.used == 0);
-
-            pdn_index = vecpdn.len() as u32;
-            if pdn_index < 3 {
-                let mut pdn : pdn_info = pdn_info::new();
-                pdn.used    = true;
-                pdn.lbi     = ebi;
-                pdn.ip      = alloc_ip;
-                pdn.ambr_dl = ambr_dl;
-                pdn.ambr_ul = ambr_ul;
-                pdn.apn     = apn;
-
-                vecpdn.push(pdn);
-            }
-            pdn_index = vecpdn.len() as u32;
-        }
+        alloc_pdn( &mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn);
 
         trace!("Setting for Bearer");
         { //Bearer
@@ -626,7 +610,7 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         trace!("Control interface settings");
         {
-            session.control = gtpc_interfaces;
+            session.control.extend(gtpc_interfaces);
         }
 
 
@@ -635,20 +619,34 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
     else { // Multiple PDN Attach 
         trace!("Already Exist Session");
 
-        let session;
+        let imsi;
+        match get_imsi_by_teid(teid) {
+            Ok(value) => imsi = value,
+            Err(error) => return Err(error),
+        }
+
+        let mut session;
         match find_session_by_imsi(imsi.clone()) {
             Ok(value) => session = value,
             Err(error) => return Err(error),
         }
 
-        // match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
-        //     Some(session) => {
-        //         let session_locked = session.lock().unwrap();
-        //         drop(session_locked);
-        //     },
-        //     _ => return Err("Error".to_string()),
-        // }
-        // drop(locked_session);
+
+        let mut pdn;
+        match find_empty_pdn(&mut session) {
+            Some(value) => pdn = value,
+            _ => return Err("No empty PDN".to_string()),
+        }
+        pdn.used = true;
+        trace!("Allocation IP Address");
+        let alloc_ip = allocate_ip();
+
+        alloc_pdn( &mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn);
+
+        trace!("Control interface settings");
+        {
+            session.control.extend(gtpc_interfaces);
+        }
     }
 
     Ok(())
