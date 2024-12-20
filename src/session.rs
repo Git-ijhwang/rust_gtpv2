@@ -17,13 +17,26 @@ lazy_static::lazy_static! {
 
 #[derive(Debug, Clone)]
 pub struct TeidList {
-    teid_map: DashMap<u32, Arc<Mutex<String>>>,
+    // teid_map: DashMap<u32, Arc<Mutex<String>>>,
+    teid_map: DashMap<u32, String>,
 }
 
 
 #[derive(Debug, Clone)]
 pub struct SessionList {
-    sess_map: DashMap<String, Arc<Mutex<Session>>>,
+    // sess_map: DashMap<String, Arc<Mutex<Session>>>,
+    sess_map: DashMap<String, Session>,
+}
+
+
+impl SessionList {
+    fn find_session_by_imsi(&self, imsi: String) -> Result<Session, String> {
+        match self.sess_map.get(&imsi) {
+            Some(v) => Ok(v.clone()),
+            _ => Err ("The session is not exist".to_string()),
+        }
+    }
+
 }
 
 
@@ -34,12 +47,17 @@ impl TeidList {
         }
     }
 
-    pub fn find_session_by_teid(&self, teid: &u32) -> Option<Arc<Mutex<String>>> {
-        self.teid_map.get(teid).map(|entry| Arc::clone(entry.value()))
+    pub fn find_session_by_teid(&self, teid: &u32) -> Result<String, String> {
+        // let ret = 
+        match self.teid_map.get(teid)//.map(|entry| Arc::clone(entry.value()))
+        {
+            Some(value) => return Ok(value.clone()),
+            _ => return Err("Can't fine IMSI by teid".to_string()),
+        }
     }
 
     pub fn add_teid(&self, teid: u32, imsi: &str) {
-        self.teid_map.insert(teid, Arc::new(Mutex::new(imsi.to_string())));
+        self.teid_map.insert(teid, imsi.to_string());
     }
 
     pub fn del_teid(&self, teid: &u32) {
@@ -175,9 +193,7 @@ impl SessionList {
         }
     }
 
-    pub fn find_session_by_imsi(&self, imsi: &str) -> Option<Arc<Mutex<Session>>> {
-        self.sess_map.get(imsi).map(|entry| Arc::clone(entry.value()))
-    }
+    // }
 
     /*
     // pub fn mut_session_by_imsi(&self, imsi: &str) -> Option<Arc<Session>> {
@@ -185,17 +201,18 @@ impl SessionList {
     // }
     */
 
-    pub fn create_session(&self, imsi:String) -> Arc<Mutex<Session>> {
-        let mut session = Arc::new(Mutex::new(Session::new()));
-        session.lock().unwrap().imsi = imsi.clone();
-        self.sess_map.insert(imsi,session.clone());
+    pub fn create_session(&self, imsi:String) -> Session {
+    //     // let mut session = Arc::new(Mutex::new(Session::new()));
+        let mut session = Session::new();
+        session.imsi = imsi.clone();
+        // self.sess_map.insert(imsi,session.clone());
 
         session
     }
 
-    pub fn del_session(&self, imsi: &str) {
-        self.sess_map.remove(imsi);
-    }
+    // pub fn del_session(&self, imsi: &str) {
+    //     self.sess_map.remove(imsi);
+    // }
 }
 
 
@@ -204,54 +221,51 @@ pub fn generate_teid() -> Option<u32> {
     Some(rng.gen()) // u32 랜덤 값 생성
 }
 
+
 pub fn get_imsi_by_teid(teid: u32) -> Result<String, String>
 {
-    let imsi;
     trace!("Find Session by TEID");
-    match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
-        Some(session) => imsi = session.lock().unwrap().clone(),
+    let teid_list = TEID_LIST.lock().unwrap();
+    match teid_list.find_session_by_teid(&teid) {
+        Ok(value) => return Ok(value.clone()),
         _ => {
             warn!("Fail to find session by TEID: {}", teid);
             return Err("Error".to_string())
         }
     }
-
-    return Ok(imsi);
 }
 
 pub fn find_session_by_imsi(imsi: String) 
--> Result<Arc<Mutex<Session>>, String>
+-> Result<Session, String>
 {
-    let locked_sessionlist = SESSION_LIST.lock().unwrap();
-    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
-    let arc_session;
+    let sessionlist = SESSION_LIST.lock().unwrap();
+    let locked_session = sessionlist.find_session_by_imsi(imsi.clone());
 
     match locked_session {
-        Some(value) => arc_session = value,
+        Ok(value) => Ok(value),
         _ => {
             warn!("Fail to find session by IMSI: {}", imsi);
             return Err("Fail to find session by IMSI".to_string())
         }
 
     }
-    return Ok(arc_session);
 }
 
 pub fn find_session_or_create(imsi: String) 
--> Arc<Mutex<Session>>
+-> Result<Session, String>
 {
-    let locked_sessionlist = SESSION_LIST.lock().unwrap();
-    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
-    let arc_session;
+    let sessionlist = SESSION_LIST.lock().unwrap();
+    let locked_session = sessionlist.find_session_by_imsi(imsi.clone());
+    // let arc_session;
 
     match locked_session {
-        Some(value) => arc_session = value,
+        Ok(value) => 
+            return Err(format!("Fail to find session by IMSI[{}]",imsi).to_string()),
         _ => {
             warn!("Fail to find session by IMSI: {} and create", imsi);
-            arc_session = locked_sessionlist.create_session(imsi.clone());
+            return Ok (sessionlist.create_session(imsi.clone()));
         }
     }
-    return arc_session;
 }
 
 pub fn check_pdn(session: &Session, lbi: u8) -> bool {
@@ -259,15 +273,18 @@ pub fn check_pdn(session: &Session, lbi: u8) -> bool {
     .any(|pdn| pdn.lbi == lbi)
 }
 
+
 pub fn check_bearer_by_lbi(session: &Session, lbi: u8) -> bool {
     session.bearer.iter()
     .any(|bearer| bearer.lbi == lbi)
 }
 
+
 pub fn check_bearer_by_ebi(session: &Session, ebi: u8) -> bool {
     session.bearer.iter()
     .any(|bearer| bearer.ebi == ebi)
 }
+
 
 pub fn find_pdn(session: &mut Session, ebi: u8)
 -> Option<&mut pdn_info>
@@ -275,6 +292,7 @@ pub fn find_pdn(session: &mut Session, ebi: u8)
     session.pdn.iter_mut()
     .find(|pdn|pdn.lbi == ebi)
 }
+
 
 pub fn find_bearer(session: &mut Session, ebi: u8)
 -> Vec<&mut bearer_info>

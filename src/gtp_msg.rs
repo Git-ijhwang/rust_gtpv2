@@ -260,7 +260,7 @@ gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
 
 
 pub async fn
-gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
+gtp_send_create_session_response (peer:Peer, imsi:String, pdn_index: usize)
 -> Result<(), String>
 {
     let mut buffer:[u8;1024] = [0u8;1024];
@@ -270,7 +270,7 @@ gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
     let session;
     match find_session_by_imsi(imsi.clone()) {
         // Ok(sess) => arc_session = sess.lock().unwrap().clone(),
-        Ok(sess) => session = sess.lock().unwrap().clone(),
+        Ok(sess) => session = sess.clone(),
         Err(error) => return Err(error),
     }
     // let session = arc_session.lock().unwrap().clone();
@@ -303,20 +303,14 @@ gtp_send_create_session_response (peer:Peer, imsi:&String, pdn_index: usize)
 }
 
 
-pub fn gtp_send_modify_bearer_response
-    (session_list: Arc<Mutex<SessionList>>, peer:Peer, imsi:&String, pdn_index: usize)
+pub fn gtp_send_modify_bearer_response (peer:Peer, imsi:&String, pdn_index: usize)
 -> Result<(), String>
 {
-    let locked_sessionlist = session_list.lock().unwrap();
-    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
     let session;
 
-    // Get Session.
-    if let Some(session_arc) = locked_session {
-        session = session_arc.lock().unwrap().clone();
-    }
-    else {
-        return Err("Error No session".to_string());
+    match find_session_by_imsi(imsi.clone()) {
+        Ok(value) => session = value.clone(),
+        _ => return Err("Error No session".to_string()),
     }
 
     let mut buffer:[u8;1024] = [0u8;1024];
@@ -338,20 +332,13 @@ pub fn gtp_send_modify_bearer_response
 }
 
 
-pub fn gtp_send_delete_session_request
-    (session_list: Arc<Mutex<SessionList>>, peer:Peer, imsi:&String, pdn_index: usize)
+pub fn gtp_send_delete_session_request (peer:Peer, imsi:&String, pdn_index: usize)
 -> Result<(), String>
 {
-    let locked_sessionlist = session_list.lock().unwrap();
-    let locked_session = locked_sessionlist.find_session_by_imsi(&imsi);
     let session;
-
-    // Get Session.
-    if let Some(session_arc) = locked_session {
-        session = session_arc.lock().unwrap().clone();
-    }
-    else {
-        return Err("Error No session".to_string());
+    match find_session_by_imsi(imsi.clone()) {
+        Ok(value) => session = value.clone(),
+        _ => return Err("Error No session".to_string()),
     }
 
     let mut buffer:[u8;1024] = [0u8;1024];

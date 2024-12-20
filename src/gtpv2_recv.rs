@@ -390,14 +390,13 @@ async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         Err(error) => return Err(error),
     }
 
-    let arc_session;
+    let mut session;
 
     match find_session_by_imsi(imsi.clone()) {
-        Ok(session) => arc_session = session,
+        Ok(value) => session = value,
         Err(error) => return Err(error),
     }
 
-    let mut session = arc_session.lock().unwrap();
     delete_pdn_and_bearer(&mut session, ebi);
 
     gtp_send_delete_session_response(peer.clone(), &imsi.clone(), pdn_index as usize).await;
@@ -408,6 +407,7 @@ async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 -> Result < (), String>
 {
+    let mut session;
     let mut imsi: String;
     let mut ebi = 0;
     let mut pdn_index:u32 = 0;
@@ -438,16 +438,14 @@ async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         Err(error) => return Err(error),
     }
 
-    let arc_session;
-
     match find_session_by_imsi(imsi.clone()) {
-        Ok(session) => arc_session = session,
+        Ok(value) => session = value,
         Err(error) => return Err(error),
     }
 
     trace!("Setting for Bearer");
     { //Bearer
-            let session = &mut arc_session.lock().unwrap();
+            // let session = &mut arc_session.lock().unwrap();
             let vecbearer = &mut session.bearer;
     }
 
@@ -580,20 +578,22 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         let teid = generate_teid();
         trace!("Created TEID: 0x{:x?}", teid);
+        // TEID_LIST.lock().unwrap().add_teid(teid.unwrap(), &imsi);
 
-        TEID_LIST.lock().unwrap().add_teid(teid.unwrap(), &imsi);
-        let arc_session = find_session_or_create(imsi.clone());
+        let mut session;
+        match find_session_or_create(imsi.clone()) {
+            Ok(value) => session = value,
+            Err(error) => return Err(error),
+        }
 
         trace!("Session Setting");
         {
-            let mut session = &mut arc_session.lock().unwrap();
             session.msisdn = msisdn;
         }
 
         trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
         { //PDN
-            let session = &mut arc_session.lock().unwrap();
             let vecpdn = &mut session.pdn;//.iter().any(|pdn_info| pdn_info.used == 0);
 
             pdn_index = vecpdn.len() as u32;
@@ -613,7 +613,6 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         trace!("Setting for Bearer");
         { //Bearer
-            let session = &mut arc_session.lock().unwrap();
             let vecbearer = &mut session.bearer;
 
             let new_bearer = bearer_info::new(
@@ -627,41 +626,29 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         trace!("Control interface settings");
         {
-            let session = &mut arc_session.lock().unwrap();
             session.control = gtpc_interfaces;
         }
 
 
-        gtp_send_create_session_response(peer.clone(), &imsi.clone(), pdn_index as usize).await;
-
+        gtp_send_create_session_response(peer.clone(), imsi, pdn_index as usize).await;
     }
     else { // Multiple PDN Attach 
         trace!("Already Exist Session");
-        let locked_session = SESSION_LIST.lock().unwrap();
-        let session = locked_session.find_session_by_imsi(&imsi);
 
-        match session {
-            Some(session) => {
-                let session_locked = session.lock().unwrap();
-                // if sesion_locked.teid != teid {
-                    //Send Reject message
-                // }
-                drop(session_locked);
-            }
-
-            _ => {
-            }
+        let session;
+        match find_session_by_imsi(imsi.clone()) {
+            Ok(value) => session = value,
+            Err(error) => return Err(error),
         }
 
-
-        match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
-            Some(session) => {
-                let session_locked = session.lock().unwrap();
-                drop(session_locked);
-            },
-            _ => return Err("Error".to_string()),
-        }
-        drop(locked_session);
+        // match TEID_LIST.lock().unwrap().find_session_by_teid(&teid) {
+        //     Some(session) => {
+        //         let session_locked = session.lock().unwrap();
+        //         drop(session_locked);
+        //     },
+        //     _ => return Err("Error".to_string()),
+        // }
+        // drop(locked_session);
     }
 
     Ok(())
