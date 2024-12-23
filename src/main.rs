@@ -132,10 +132,10 @@ async fn main() -> Result<(), Error>
     // let msg_queue = MsgQue::new();
 
     // peer_manage().await;
-    let peer_handle = tokio::spawn(async move {
+    // let peer_handle = tokio::spawn(async move {
         info!("Peer Manage");
         peer_manage().await;
-    });
+    // });
 
     {
         // let mut queue_clone = SHARED_QUEUE.clone();
@@ -168,8 +168,6 @@ async fn main() -> Result<(), Error>
             eprintln!("Failed to create socket for address 0.0.0.0:{}", src_port);
         }
     }
-
-
     // let _ = tokio::try_join!( peer_handle, queue_handle);
 
     Ok(())

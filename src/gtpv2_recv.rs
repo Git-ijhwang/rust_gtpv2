@@ -653,10 +653,33 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
     Ok(())
 }
 
+async fn recv_echo_req( peer: & mut Peer, ies: IeMessage)
+-> Result < (), String>
+{
+    let mut restart_counter = 0;
+
+    trace!("GET IE Recovery");
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_RECOVERY) {
+        restart_counter = lv[0].v[0];
+    }
+    if peer.get_peer_status() == false {
+        peer.activate_peer_status();
+    }
+    peer.update_last_active();
+
+    gtp_send_echo_response(peer.clone() , restart_counter).await;   
+
+    Ok(())
+}
+
 
 async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
 {
     match msg_type {
+        GTPV2C_CREATE_SESSION_REQ => {
+            trace!("This message is Echo Request");
+            recv_echo_req( peer, ies).await;
+        }
         GTPV2C_CREATE_SESSION_REQ => {
             trace!("This message is Create Session Request");
             recv_crte_sess_req( peer, ies, teid).await;
@@ -676,7 +699,7 @@ async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
 }
 
 
-pub async fn recv_gtpv2( _data: &[u8], peer: &mut Peer,
+pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
     // session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>,
 )  -> Result<(), String> {
     

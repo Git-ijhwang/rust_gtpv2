@@ -180,35 +180,35 @@ pub async fn peer_manage()
     loop {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let mut buffer:[u8;1024] = [0u8;1024];
-
         let mut peers = GTP2_PEER.lock().unwrap();
-        for (key, peer) in  peers.iter_mut() {
-            if Instant::now() >= peer.last_echo_snd_time+Duration::from_secs(echo_period) {
-                if peer.status == false {
-                    //Send Echo Request
-                    peer.activate_peer_status();
 
-                    if peer.get_count() <= rexmit_cnt {
-                        // make_gtpv2(GTPV2C_ECHO_REQ, mut buffer, peer.clone(), false, 0);
-                        match gtp_send_echo_request(peer.clone()).await {
-                            Ok(_) => {
-                                peer.increase_count();
-                                peer.update_last_echo_snd_time();
-                            },  
-                            _ => {
-                                error!("Fail to send Echo Request");
-                            }
+        for (key, peer) in peers.iter_mut() {
+            if Instant::now() >= peer.last_echo_snd_time+Duration::from_secs(echo_period) {
+
+                if peer.get_count() <= rexmit_cnt {
+                    if peer.status == false {
+                        //Send Echo Request
+                        peer.activate_peer_status();
+                    }
+                    // make_gtpv2(GTPV2C_ECHO_REQ, mut buffer, peer.clone(), false, 0);
+                    match gtp_send_echo_request(peer.clone()).await {
+                        Ok(_) => {
+                            peer.increase_count();
+                            peer.update_last_echo_snd_time();
+                        },  
+                        _ => {
+                            error!("Fail to send Echo Request");
                         }
                     }
-                    else {
-                        peer.update_last_active();
-                        peer.deactivate_peer_status();
-
-                        peer.reset_count();
-                    }
-
-                    continue;
                 }
+                else {
+                    peer.update_last_active();
+                    peer.deactivate_peer_status();
+
+                    peer.reset_count();
+                }
+
+                continue;
             }
         }
         // break;

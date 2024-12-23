@@ -113,10 +113,10 @@ pub fn parse_header (data: &[u8]) -> Result<(Gtpv2CHeader, usize), String>
     }
 
     //get Piggyback flag
-    let pflag = (data[p] & GTPV2_P_FLAG) != 0;
+    let pflag = (data[p] & GTPV2_P_FLAG) > 0;
 
     //get Teid flag
-    let tflag = (data[p] & GTPV2_T_FLAG) != 0; p += 1;
+    let tflag = (data[p] & GTPV2_T_FLAG) > 0; p += 1;
 
     // let msg_type_map = make_msg_type_map();
     let msg_type = data[p]; p += 1;
