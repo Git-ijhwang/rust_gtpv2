@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use tokio::time::{self, Duration};
 use log::{debug, error, info, trace, warn};
+use crate::gtp_msg::gtp_send_echo_request;
 use crate::gtpv2_type::*;
 use crate::config::*;
 extern crate lazy_static;
@@ -185,10 +186,19 @@ pub async fn peer_manage()
             if Instant::now() >= peer.last_echo_snd_time+Duration::from_secs(echo_period) {
                 if peer.status == false {
                     //Send Echo Request
-                    // peer.activate_peer_status();
+                    peer.activate_peer_status();
 
                     if peer.get_count() <= rexmit_cnt {
                         // make_gtpv2(GTPV2C_ECHO_REQ, mut buffer, peer.clone(), false, 0);
+                        match gtp_send_echo_request(peer.clone()).await {
+                            Ok(_) => {
+                                peer.increase_count();
+                                peer.update_last_echo_snd_time();
+                            },  
+                            _ => {
+                                error!("Fail to send Echo Request");
+                            }
+                        }
                     }
                     else {
                         peer.update_last_active();

@@ -602,11 +602,8 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
         trace!("Setting for Bearer");
         alloc_bearer(&mut session,
-            ebi,
-            ebi,
-            gtpu_interfaces[0].teid,
-            bearer_qos.flag,
-            bearer_qos.qci,
+            ebi, ebi, gtpu_interfaces[0].teid,
+            bearer_qos.flag, bearer_qos.qci,
             bearer_qos.mbr_ul, bearer_qos.mbr_dl,
             bearer_qos.gbr_ul, bearer_qos.gbr_dl);
 
@@ -631,13 +628,6 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
             Err(error) => return Err(error),
         }
 
-
-        let mut pdn;
-        match find_empty_pdn(&mut session) {
-            Some(value) => pdn = value,
-            _ => return Err("No empty PDN".to_string()),
-        }
-        pdn.used = true;
         trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
 

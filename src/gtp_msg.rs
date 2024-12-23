@@ -352,3 +352,18 @@ pub fn gtp_send_delete_session_request (peer:Peer, imsi:&String, pdn_index: usiz
 
     Ok(())
 }
+pub async fn
+gtp_send_echo_request (peer:Peer)
+-> Result<(), String>
+{
+    let mut buffer:[u8;1024] = [0u8;1024];
+    // create_ie(&mut buffer, GTPV2C_IE_RECOVERY, 0);
+    let total_len = gtpv2_add_ie_tv1(&mut buffer, GTPV2C_IE_RECOVERY, 0, 0, 1);
+
+    tokio::spawn(
+        make_gtpv2( buffer, GTPV2C_ECHO_REQ,
+            peer, true, total_len as u8, false)
+    );
+
+    Ok(())
+}

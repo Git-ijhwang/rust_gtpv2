@@ -330,6 +330,7 @@ pub fn alloc_bearer(session: &mut Session,
     bearer.gbr_dl= gbr_dl;
 
     session.bearer.push(bearer);
+
     Ok(session.bearer.len())
 }
 
