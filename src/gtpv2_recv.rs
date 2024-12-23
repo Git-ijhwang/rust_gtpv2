@@ -752,6 +752,9 @@ pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
     trace!("get IE value");
     let ies = get_ie_value(&_data[hdr_len..]);
 
+    trace!("PEER");
+    peer.update_rseq(rcv_seq);
+
     trace!("Send to Next peer");
     pgw_recv( peer, ies, rcv_msg_type, teid).await;
 

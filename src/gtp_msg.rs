@@ -53,7 +53,7 @@ impl Gtpv2CHeader {
             l += 4;
         }
 
-        let mut s = s << 8;
+        let s = s << 8;
         if mp_flag {
             v |= 0b0000_0100; // T-flag 설정
             // s |= mp as u32;

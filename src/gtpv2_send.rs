@@ -68,11 +68,9 @@ pub async fn make_gtpv2( body: [u8;1024], msg_type: u8,
         queue_locked.push(pkt);
     }
 
-    {
-        peer.update_last_echo_snd_time();
-        peer.increase_count();
+
+    update_peer(&mut peer);
         warn!("Message Send Failed Scenario!!");
-    }
     // let ret = send_udp_data(&buffer[..length+len as usize], &peer.ip.to_string(), peer.port);
     // match ret {
     //     Ok(v) => {

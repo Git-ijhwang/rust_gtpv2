@@ -22,8 +22,8 @@ pub struct Peer {
     pub ip:             Ipv4Addr,
     pub port:           u16,    // peer port 
     pub node_type:          String,
-    pub msglen:             u16,    // msg length 
-    pub version:            u8,     // gtp version 
+    // pub msglen:             u16,    // msg length 
+    // pub version:            u8,     // gtp version 
     pub status:             bool,     // gtp version 
     pub resend_count:       u8,
 
@@ -33,9 +33,9 @@ pub struct Peer {
 
     pub last_active_time:   Instant,   // 마지막 활동 시간
     pub last_echo_snd_time: Instant,   // 마지막  시간
-    pub tx_count:           u32,              // 전송된 메시지 수
-    pub rx_count:           u32,              // 수신된 메시지 수
-    pub error_count:        u16,              // 에러 횟수
+    // pub tx_count:           u32,              // 전송된 메시지 수
+    // pub rx_count:           u32,              // 수신된 메시지 수
+    // pub error_count:        u16,              // 에러 횟수
 }
 
 
@@ -46,8 +46,8 @@ impl Peer {
             ip,
             port,
             node_type,
-            msglen:     0,
-            version:    GTP_VERSION,
+            // msglen:     0,
+            // version:    GTP_VERSION,
             status:     false,
             teid:       0,
             rseq:       0,
@@ -55,9 +55,9 @@ impl Peer {
             resend_count: 0,
             last_active_time: Instant::now(),
             last_echo_snd_time: Instant::now(),
-            tx_count:   0,
-            rx_count:   0,
-            error_count:    0,
+            // tx_count:   0,
+            // rx_count:   0,
+            // error_count:    0,
         }
     }
 
@@ -112,6 +112,14 @@ impl Peer {
         self.resend_count += 1;
     }
 
+    pub fn increase_tseq(&mut self) {
+        self.tseq = (self.tseq + 1) & 0xFFFFFF;
+    }
+
+    pub fn update_rseq(&mut self, rseq: u32) {
+        self.rseq = rseq;
+    }
+
     pub fn get_count(&self) -> u8 {
         self.resend_count
     }
@@ -124,6 +132,13 @@ impl Peer {
         let list = GTP2_PEER.lock().unwrap();
         info!("{:#?}", list);
     }
+}
+
+
+pub fn update_peer(peer: &mut Peer) {
+    peer.update_last_echo_snd_time();
+    peer.increase_count();
+    peer.increase_tseq();
 }
 
 
@@ -192,10 +207,7 @@ pub async fn peer_manage()
                     }
                     // make_gtpv2(GTPV2C_ECHO_REQ, mut buffer, peer.clone(), false, 0);
                     match gtp_send_echo_request(peer.clone()).await {
-                        Ok(_) => {
-                            peer.increase_count();
-                            peer.update_last_echo_snd_time();
-                        },  
+                        Ok(_) => { },  
                         _ => {
                             error!("Fail to send Echo Request");
                         }
