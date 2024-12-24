@@ -13,6 +13,7 @@ static ECHO_TIMEOUT: Duration = Duration::from_secs(3);
 pub struct EncapPkt {
     pub peer_index: Ipv4Addr,
     pub msg_type:   u8,
+    pub seq:        u32,
     pub send_time:  Instant,
     pub expiry:     Duration,   // duration time in Sec
     pub send_count: u32,
@@ -26,6 +27,7 @@ impl Clone for EncapPkt {
         EncapPkt {
             peer_index: self.peer_index,
             msg_type:   self.msg_type,
+            seq:        self.seq,
             expiry:     self.expiry,
             send_time:  self.send_time,
             send_count: self.send_count,
@@ -42,6 +44,7 @@ impl EncapPkt {
         EncapPkt {
             peer_index: index,
             msg_type,
+            seq:        0,
             send_time:  Instant::now(),
             expiry:     Duration::new(3, 0),
             send_count: 1,
@@ -90,7 +93,10 @@ impl MsgQue  {
     }
 
     pub fn rm_peer(&mut self, value: Ipv4Addr) {
-        self.queue.retain(|item| item.peer_index != value);
+        self.queue.retain(|item| item.peer_index != value );
+    }
+    pub fn rm_pkt(&mut self, value: Ipv4Addr, seq: u32) {
+        self.queue.retain(|item| item.peer_index != value || item.seq != seq);
     }
 
     pub fn push(&mut self, value: EncapPkt) {
@@ -120,6 +126,20 @@ impl MsgQue  {
         });
     }
 
+}
+
+pub async fn find_pkt_in_queue(peer_index: Ipv4Addr, rcv_seq: u32) {
+    let mut queue = SHARED_QUEUE.lock().await;
+    match queue.queue.iter().find(|x| x.peer_index == peer_index && x.seq == rcv_seq) {
+        Some(pkt) => {
+            info!("Found Packet in Queue");
+            queue.rm_pkt(peer_index, rcv_seq);
+        }
+        None => {
+            error!("Can't find Packet in Queue");
+        }
+    }
+    
 }
 
 pub async fn check_timer () {

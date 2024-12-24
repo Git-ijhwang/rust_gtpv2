@@ -57,38 +57,39 @@ pub async fn make_gtpv2( body: [u8;1024], msg_type: u8,
 
     buffer[length..length + len as usize].copy_from_slice(&body[..len as usize]);
 
-
     print_hex(&buffer, length+len as usize);
 
     if resend_flag == true {
         info!("Encap the packet ");
-        let pkt = EncapPkt::new(peer.ip, msg_type, buffer[..length + len as usize].to_vec());
         //Only for Test
-        let mut queue_locked = SHARED_QUEUE.lock().await;
-        queue_locked.push(pkt);
     }
 
-
     update_peer(&mut peer);
-        warn!("Message Send Failed Scenario!!");
-    // let ret = send_udp_data(&buffer[..length+len as usize], &peer.ip.to_string(), peer.port);
-    // match ret {
-    //     Ok(v) => {
-    //         if v <= 0 {
-    //             println!("UDP Send failed");
-    //             return  Err ("Fail to send message to peer".to_string());
-    //         }
+    warn!("Message Send Failed Scenario!!");
 
-    //         let mut queue_locked = SHARED_QUEUE.lock().await;
-    //         queue_locked.push(pkt);
+    let ret = send_udp_data(&buffer[..length+len as usize], &peer.ip.to_string(), peer.port);
+    match ret {
+        Ok(v) => {
+            if v <= 0 {
+                println!("UDP Send failed");
+                return  Err ("Fail to send message to peer".to_string());
+            }
 
-    //         peer.update_last_echo_snd_time();
-    //         peer.increase_count();
+            // let mut queue_locked = SHARED_QUEUE.lock().await;
+            // queue_locked.push(pkt);
 
-    //         Ok(())
-    //     },
-    //     _ => return  Err ("Fail to send message to peer".to_string()),
-    // }
+            let pkt = EncapPkt::new(peer.ip, msg_type, buffer[..length + len as usize].to_vec());
+            let mut queue_locked = SHARED_QUEUE.lock().await;
+            queue_locked.push(pkt);
+
+            peer.update_last_echo_snd_time();
+            peer.increase_count();
+
+        },
+        _ => {
+            return  Err ("Fail to send message to peer".to_string());
+        }
+    }
     Ok(())
 
 }

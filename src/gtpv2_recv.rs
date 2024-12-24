@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use log::{debug, error, info, trace, warn};
 
 use crate::gtp_dictionary::{self, *};
-use crate::{session, validate_gtpv2::*};
+use crate::{find_pkt_in_queue, session, validate_gtpv2::*};
 use crate::gtpv2_type::*;
 use crate::gtp_msg::*;
 use std::io::Error;
@@ -672,13 +672,31 @@ async fn recv_echo_req( peer: & mut Peer, ies: IeMessage)
     Ok(())
 }
 
+async fn recv_echo_rsp( peer: & mut Peer, ies: IeMessage)
+-> Result < (), String>
+{
+    let mut restart_counter = 0;
 
-async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32)
+    trace!("GET IE Recovery");
+    if let Some(lv) = ies.get_ie(GTPV2C_IE_RECOVERY) {
+        restart_counter = lv[0].v[0];
+    }
+
+    Ok(())
+}
+
+
+async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32, rcv_seq: u32)
 {
     match msg_type {
-        GTPV2C_CREATE_SESSION_REQ => {
+        GTPV2C_ECHO_REQ => {
             trace!("This message is Echo Request");
             recv_echo_req( peer, ies).await;
+        }
+        GTPV2C_ECHO_RSP => {
+            trace!("This message is Echo Request");
+            find_pkt_in_queue(peer.ip, rcv_seq);
+            recv_echo_rsp( peer, ies).await;
         }
         GTPV2C_CREATE_SESSION_REQ => {
             trace!("This message is Create Session Request");
@@ -756,7 +774,7 @@ pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
     peer.update_rseq(rcv_seq);
 
     trace!("Send to Next peer");
-    pgw_recv( peer, ies, rcv_msg_type, teid).await;
+    pgw_recv( peer, ies, rcv_msg_type, teid, rcv_seq).await;
 
     Ok(())
 }

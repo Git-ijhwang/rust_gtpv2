@@ -365,7 +365,7 @@ gtp_send_echo_request (peer:Peer)
 
     tokio::spawn(
         make_gtpv2( buffer, GTPV2C_ECHO_REQ,
-            peer, false, total_len as u8, false)
+            peer, false, total_len as u8, true)
     );
 
     Ok(())

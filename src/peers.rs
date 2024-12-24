@@ -204,8 +204,8 @@ pub async fn peer_manage()
                     if peer.status == false {
                         //Send Echo Request
                         peer.activate_peer_status();
+                        peer.update_last_active();
                     }
-                    // make_gtpv2(GTPV2C_ECHO_REQ, mut buffer, peer.clone(), false, 0);
                     match gtp_send_echo_request(peer.clone()).await {
                         Ok(_) => { },  
                         _ => {
@@ -214,9 +214,7 @@ pub async fn peer_manage()
                     }
                 }
                 else {
-                    peer.update_last_active();
                     peer.deactivate_peer_status();
-
                     peer.reset_count();
                 }
 
