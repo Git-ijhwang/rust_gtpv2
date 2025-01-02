@@ -260,20 +260,24 @@ gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
 
 
 pub async fn
-gtp_send_create_session_response (peer:Peer, imsi:String, pdn_index: usize)
+gtp_send_create_session_response (peer:Peer,
+    // imsi:String,
+    session:Arc<Mutex<Session>>,
+    pdn_index: usize)
 -> Result<(), String>
 {
     let mut buffer:[u8;1024] = [0u8;1024];
+    let session = session.lock().unwrap();
+
     trace!("Start Create Session Response ");
 
     // let arc_session;
-    let session;
-    match find_session_by_imsi(imsi.clone()) {
-        // Ok(sess) => arc_session = sess.lock().unwrap().clone(),
-        Ok(sess) => session = sess.clone(),
-        Err(error) => return Err(error),
-    }
-    // let session = arc_session.lock().unwrap().clone();
+    // let session;
+    // match find_session_by_imsi(imsi.clone()) {
+    //     // Ok(sess) => arc_session = sess.lock().unwrap().clone(),
+    //     Ok(sess) => session = sess.clone(),
+    //     Err(error) => return Err(error),
+    // }
 
     //IE CAUSE
     let mut total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
@@ -303,15 +307,18 @@ gtp_send_create_session_response (peer:Peer, imsi:String, pdn_index: usize)
 }
 
 
-pub fn gtp_send_modify_bearer_response (peer:Peer, imsi:&String, pdn_index: usize)
+pub fn gtp_send_modify_bearer_response (peer:Peer,
+    // imsi:&String,
+    session:Arc<Mutex<Session>>,
+    pdn_index: usize)
 -> Result<(), String>
 {
-    let session;
+    let session = session.lock().unwrap();
 
-    match find_session_by_imsi(imsi.clone()) {
-        Ok(value) => session = value.clone(),
-        _ => return Err("Error No session".to_string()),
-    }
+    // match find_session_by_imsi(imsi.clone()) {
+    //     Ok(value) => session = value.clone(),
+    //     _ => return Err("Error No session".to_string()),
+    // }
 
     let mut buffer:[u8;1024] = [0u8;1024];
 
@@ -332,14 +339,17 @@ pub fn gtp_send_modify_bearer_response (peer:Peer, imsi:&String, pdn_index: usiz
 }
 
 
-pub fn gtp_send_delete_session_request (peer:Peer, imsi:&String, pdn_index: usize)
+pub fn gtp_send_delete_session_request (peer:Peer,
+    // imsi:&String,
+    session: Arc<Mutex<Session>>,
+    pdn_index: usize)
 -> Result<(), String>
 {
-    let session;
-    match find_session_by_imsi(imsi.clone()) {
-        Ok(value) => session = value.clone(),
-        _ => return Err("Error No session".to_string()),
-    }
+    let session = session.lock().unwrap();
+    // match find_session_by_imsi(imsi.clone()) {
+    //     Ok(value) => session = value.clone(),
+    //     _ => return Err("Error No session".to_string()),
+    // }
 
     let mut buffer:[u8;1024] = [0u8;1024];
 

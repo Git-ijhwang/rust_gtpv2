@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use core::result::Result;
-use std::thread;
+use std::{clone, thread};
 use std::collections::HashMap;
 use log::{debug, error, info, trace, warn};
 
@@ -27,7 +27,8 @@ struct Gtpv2Peer {
 }
 
 
-struct BearerQos {
+#[derive(Debug, Clone)]
+pub struct BearerQos {
     flag:   u8,
     qci:    u8,
     mbr_ul: u32,
@@ -35,8 +36,9 @@ struct BearerQos {
     gbr_ul: u32,
     gbr_dl: u32,
 }
+
 impl BearerQos {
-    fn new() -> Self {
+    pub fn new() -> Self {
         BearerQos {
             flag: 0,
             qci: 0,
@@ -372,7 +374,8 @@ pub fn interface_type_map(interface_type: u8) -> u8 {
 }
 
 
-async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32)
+async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32,
+    teid_list: &TeidList, sess_list: &SessionList)
 -> Result < (), String>
 {
     let mut imsi: String;
@@ -385,17 +388,13 @@ async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         ebi = lv[0].v[0];
     }
 
-    match get_imsi_by_teid(teid) {
-        Ok(ret) => imsi = ret,
-        Err(error) => return Err(error),
-    }
-
-    let mut session;
-
-    match find_session_by_imsi(imsi.clone()) {
-        Ok(value) => session = value,
-        Err(error) => return Err(error),
-    }
+	let mut session: Arc<Mutex<Session>> = if let Some(result) = teid_list.get(&teid) {
+		result
+	}
+	else {
+		return Err(format!("Fail to get Session by teid{}", teid).to_string());
+	};
+	let imsi = session.lock().unwrap().imsi.clone();
 
     delete_pdn_and_bearer(&mut session, ebi);
 
@@ -404,10 +403,10 @@ async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32)
     Ok(())
 }
 
-async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32)
+async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32,
+    teid_list: &TeidList, sess_list: &SessionList)
 -> Result < (), String>
 {
-    let mut session;
     let mut imsi: String;
     let mut ebi = 0;
     let mut pdn_index:u32 = 0;
@@ -433,26 +432,26 @@ async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
     }
 
-    match get_imsi_by_teid(teid) {
-        Ok(value) => imsi = value,
-        Err(error) => return Err(error),
-    }
 
-    match find_session_by_imsi(imsi.clone()) {
-        Ok(value) => session = value,
-        Err(error) => return Err(error),
-    }
+	let mut session: Arc<Mutex<Session>> = if let Some(result) = teid_list.get(&teid) {
+		result
+	}
+	else {
+		return Err(format!("Fail to get Session by teid{}", teid).to_string());
+	};
 
     trace!("Setting for Bearer");
     { //Bearer
-            // let session = &mut arc_session.lock().unwrap();
+            let session = &mut session.lock().unwrap();
             let vecbearer = &mut session.bearer;
+			//TODO: Check if the bearer exists
     }
 
     Ok(())
 }
 
-async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
+async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32,
+    teid_list: &TeidList, sess_list: &SessionList)
 -> Result < (), String>
 {
     let imsi;
@@ -574,21 +573,24 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
 
 
     if teid == 0 { //Initial Attach
+        let mut session;
+
         trace!("Create New session");
 
-        let teid = generate_teid();
-        trace!("Created TEID: 0x{:x?}", teid);
-        // TEID_LIST.lock().unwrap().add_teid(teid.unwrap(), &imsi);
-
-        let mut session;
-        match find_session_or_create(imsi.clone()) {
+        match find_session_or_create(imsi.clone(), sess_list) {
             Ok(value) => session = value,
             Err(error) => return Err(error),
         }
+
+        let teid = if let Some(result) = generate_teid() { result }
+        else { return Err("Failt to generate TEID".to_string()); };
+
+        trace!("Created TEID: 0x{:x?}", teid);
+        teid_list.add(teid, Arc::clone(&session));
 
         trace!("Session Setting");
         {
-            session.msisdn = msisdn;
+            session.lock().unwrap().msisdn = msisdn;
         }
 
         trace!("Allocation IP Address");
@@ -601,38 +603,35 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         }
 
         trace!("Setting for Bearer");
-        alloc_bearer(&mut session,
+		match alloc_bearer(&mut session,
             ebi, ebi, gtpu_interfaces[0].teid,
-            bearer_qos.flag, bearer_qos.qci,
-            bearer_qos.mbr_ul, bearer_qos.mbr_dl,
-            bearer_qos.gbr_ul, bearer_qos.gbr_dl);
+            bearer_qos.clone()) {
+				Err(error) => return Err(error),
+				Ok(_) => trace!("Success to allocate bearer"),
+			}
 
         trace!("Control interface settings");
-        session.control.extend(gtpc_interfaces);
+        session.lock().unwrap().control.extend(gtpc_interfaces);
 
-
-        gtp_send_create_session_response(peer.clone(), imsi, pdn_index as usize).await;
-    }
+        gtp_send_create_session_response(peer.clone(), session, pdn_index as usize).await;
+	}
     else { // Multiple PDN Attach 
         trace!("Already Exist Session");
 
-        let imsi;
-        match get_imsi_by_teid(teid) {
-            Ok(value) => imsi = value,
-            Err(error) => return Err(error),
+        let mut session: Arc<Mutex<Session>> = if let Some(result) = teid_list.get(&teid) {
+            result
         }
+        else {
+            return Err(format!("Fail to get Session by teid{}", teid).to_string());
+        };
 
-        let mut session;
-        match find_session_by_imsi(imsi.clone()) {
-            Ok(value) => session = value,
-            Err(error) => return Err(error),
-        }
+        let imsi = session.lock().unwrap().imsi.clone();
 
         trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
 
         trace!("Setting for PDN");
-        match alloc_pdn( &mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
+        match alloc_pdn(&mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
             Ok(value) => pdn_index = value,
             Err(error) => return Err(error),
         }
@@ -640,14 +639,13 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32)
         trace!("Setting for Bearer");
         alloc_bearer(&mut session,
             ebi, ebi, gtpu_interfaces[0].teid,
-            bearer_qos.flag, bearer_qos.qci,
-            bearer_qos.mbr_ul, bearer_qos.mbr_dl,
-            bearer_qos.gbr_ul, bearer_qos.gbr_dl);
+            bearer_qos.clone());
 
         trace!("Control interface settings");
-        session.control.extend(gtpc_interfaces);
+        session.lock().unwrap().control.extend(gtpc_interfaces);
 
-        gtp_send_create_session_response(peer.clone(), imsi, pdn_index as usize).await;
+        // gtp_send_create_session_response(peer.clone(), imsi, pdn_index as usize).await;
+        gtp_send_create_session_response(peer.clone(), session, pdn_index as usize).await;
     }
 
     Ok(())
@@ -686,7 +684,9 @@ async fn recv_echo_rsp( peer: & mut Peer, ies: IeMessage)
 }
 
 
-async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32, rcv_seq: u32)
+async fn pgw_recv( peer: &mut Peer, ies: IeMessage,
+    msg_type: u8, teid: u32, rcv_seq: u32,
+    teid_list: &TeidList, sess_list: &SessionList)
 {
     match msg_type {
         GTPV2C_ECHO_REQ => {
@@ -698,17 +698,19 @@ async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32, rcv
             find_pkt_in_queue(peer.ip, rcv_seq);
             recv_echo_rsp( peer, ies).await;
         }
+
+        // Create Session Reqeust
         GTPV2C_CREATE_SESSION_REQ => {
             trace!("This message is Create Session Request");
-            recv_crte_sess_req( peer, ies, teid).await;
+            recv_crte_sess_req( peer, ies, teid, teid_list, sess_list).await;
         }
         GTPV2C_MODIFY_BEARER_REQ => {
             trace!("This message is Modify Bearer Request");
-            recv_modify_bearer_req( peer, ies, teid).await;
+            recv_modify_bearer_req( peer, ies, teid, teid_list, sess_list).await;
         }
         GTPV2C_DELETE_SESSION_REQ => {
             trace!("This message is Delete Session Request");
-            recv_delete_session_req( peer, ies, teid).await;
+            recv_delete_session_req( peer, ies, teid, teid_list, sess_list).await;
         }
         _ => {
             error!("Unknown Message type: {}", msg_type);
@@ -717,8 +719,55 @@ async fn pgw_recv( peer: &mut Peer, ies: IeMessage, msg_type: u8, teid: u32, rcv
 }
 
 
+pub async fn gtpv2_recv_task(socket: UdpSocket) {
+    let mut buf = [0u8; BUFSIZ];
+    let timeout = Duration::from_millis(1000);
+    println!("Start Recv Task");
+
+    let teid_list = TeidList::new();
+    let sess_list = SessionList::new();
+
+    loop {
+        socket.set_read_timeout(Some(timeout)).unwrap();
+
+        match socket.recv_from(&mut buf) {
+            Ok((nbyte, addr)) => {
+                info!("Receive GTP MESSAGE");
+                if let SocketAddr::V4(addr) = addr {
+                    // let sin_addr = addr.ip();
+                    let sin_port = addr.port();
+
+                    /* Only for TEST */
+                    let sin_addr = &Ipv4Addr::new(10,10,2,72);
+                    trace!("sin_addr info {:?}", sin_addr);
+
+                    match get_peer(sin_addr) {
+                        Err(_) => {
+                            warn!("This is not registered PEER!");
+                        } 
+
+                        Ok(mut peer) => {
+                            info!("Success get peer {}", peer.ip);
+                            _ = recv_gtpv2(&buf[..nbyte], &mut peer, &teid_list, &sess_list ).await;
+                        }
+                    }
+                }
+            }
+
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                continue;
+            }
+
+            Err(e) => {
+                error!("Error receiving data: {:?}", e);
+                break;
+            }
+        }
+    }
+}
+
 pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
-    // session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>,
+    teid_list: &TeidList, sess_list: &SessionList
 )  -> Result<(), String> {
     
     let hdr_len;
@@ -743,13 +792,12 @@ pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
     }
 
     trace!("Get dictionary based on receive message type");
-    info!("Get dictionary based on receive message type");
     let dictionary = GTP_DICTIONARY.read().await;
 
     let result = dictionary 
             .iter().find(|msg | msg.msg_type == rcv_msg_type )
             .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
-    
+
     match result {
         Ok(data) =>{
             info!("Success! to get gtp dictionary");
@@ -774,55 +822,7 @@ pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
     peer.update_rseq(rcv_seq);
 
     trace!("Send to Next peer");
-    pgw_recv( peer, ies, rcv_msg_type, teid, rcv_seq).await;
+    pgw_recv( peer, ies, rcv_msg_type, teid, rcv_seq, teid_list, sess_list).await;
 
     Ok(())
-}
-
-// pub async fn gtpv2_recv_task() {
-// }
-// pub async fn gtpv2_recv_task(socket: &UdpSocket, session_list: Arc<Mutex<SessionList>>, teid_list: Arc<Mutex<TeidList>>) {
-
-pub async fn gtpv2_recv_task(socket: UdpSocket) {
-    let mut buf = [0u8; BUFSIZ];
-    let timeout = Duration::from_millis(1000);
-    println!("Start Recv Task");
-
-    loop {
-        socket.set_read_timeout(Some(timeout)).unwrap();
-
-        match socket.recv_from(&mut buf) {
-            Ok((nbyte, addr)) => {
-                info!("Receive GTP MESSAGE");
-                if let SocketAddr::V4(addr) = addr {
-                    // let sin_addr = addr.ip();
-                    let sin_port = addr.port();
-
-                    /* Only for TEST */
-                    let sin_addr = &Ipv4Addr::new(10,10,2,72);
-                    trace!("sin_addr info {:?}", sin_addr);
-
-                    match get_peer(sin_addr) {
-                        Err(_) => {
-                            warn!("This is not registered PEER!");
-                        } 
-
-                        Ok(mut peer) => {
-                            info!("Success get peer {}", peer.ip);
-                            _ = recv_gtpv2(&buf[..nbyte], &mut peer ).await;
-                        }
-                    }
-                }
-            }
-
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                continue;
-            }
-
-            Err(e) => {
-                error!("Error receiving data: {:?}", e);
-                break;
-            }
-        }
-    }
 }

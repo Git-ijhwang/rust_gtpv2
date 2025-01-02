@@ -18,7 +18,6 @@ use std::thread;
 use std::io::Error;
 use std::sync::{Arc, Mutex};
 use std::net::AddrParseError;
-use config::*;
 use core::result::Result;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -27,11 +26,13 @@ use fern::Dispatch;
 use std::path::Path;
 use std::{fs::File, fs::metadata,io::Write};
 use log::{debug, error, info, trace, warn};
+
 use crate::peers::*;
+use crate::config::*;
 use crate::udpsock::*;
 use crate::gtpv2_recv::*;
 use crate::gtp_dictionary::*;
-use crate::session::*;
+// use crate::session::*;
 use crate::ippool::*;
 use crate::pkt_manage::*;
 
@@ -93,6 +94,7 @@ async fn setup_logger() -> Result<(), fern::InitError> {
     Ok(())
 }
 
+
 #[tokio::main]
 async fn main() -> Result<(), Error>
 {
@@ -107,20 +109,10 @@ async fn main() -> Result<(), Error>
         return Err(v);
     }
 
+    //Set up logger
     setup_logger().await;
-    // if let Err(v) = 
-    // {
-    //     // warn!("Loggin Setting Error.");
-    //     return Err();
-    // }
 
-    // if let Err(v) =
     load_gtp_dictionary("src/config/GTPv2_Dictionary.json").await ;
-    // print_dictionary().await;
-    // {
-    //     println!("Failed load dictionary file");
-    //     return Err(v);
-    // }
 
     //Create Peer structure based on config_peer file
     let ret = create_peer().await;
@@ -160,7 +152,7 @@ async fn main() -> Result<(), Error>
             // thread::spawn(move || gtpv2_recv_task(recv_socket, session_list, teid_list) );
                 // gtpv2_recv_task(&recv_socket, session_list.clone(), teid_list.clone()).await;
             // recv_handle = tokio::spawn(async move {
-                gtpv2_recv_task(recv_socket).await;
+            gtpv2_recv_task(recv_socket).await;
             // });
             // dummy(recv_socket);
         }

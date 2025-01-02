@@ -1,243 +1,221 @@
 #![allow(dead_code)]
 use std::collections::HashMap;
 // use crate::recv_gtpv2::*;
-/*
- 		[ 3GPP TS 29.274 V10.5.0 (2011-12) ]
-*/
 
+// [ 3GPP TS 29.274 V10.5.0 (2011-12) ]
 pub const GTP_VERSION: u8 = 	                    	            0x02;
 pub const GTPV2_P_FLAG: u8 =                    		            0x10;
 pub const GTPV2_T_FLAG: u8 = 	     	                            0x08;
 pub const GTPV2C_MINIMUM_HEADER_SIZE: u8 = 		                8;
 const GTPV2C_EPC_SPECIFIC_HEADER_SIZE: u8 = 		            12;
-
  
-/*
- * GTPv2-C Message Type Values
- * ======================================================
- */
+// GTPv2-C Message Type Values
 pub const GTPV2C_ECHO_REQ: u8 = 		                            1;
 pub const GTPV2C_ECHO_RSP: u8 = 		                            2;
 pub const GTPV2C_VERSION_NOT_SUPPORTED_IND: u8 = 		            3;
- 		/* ----------------------------------------- *
- 		 * SGSN/MME/ePDG to PGW (S4/S11, S5/S8, S2b) *
- 		 * ----------------------------------------- */
+
+// SGSN/MME/ePDG to PGW (S4/S11, S5/S8, S2b)
 pub const GTPV2C_CREATE_SESSION_REQ: u8 = 		                    32;
 pub const GTPV2C_CREATE_SESSION_RSP: u8 = 		                    33;
 pub const GTPV2C_DELETE_SESSION_REQ: u8 = 		                    36;
 pub const GTPV2C_DELETE_SESSION_RSP: u8 = 		                    37;
- 		/* ------------------------------- *
- 		 * SGSN/MME to PGW (S4/S11, S5/S8) *
- 		 * ------------------------------- */
+
+// SGSN/MME to PGW (S4/S11, S5/S8)
 pub const GTPV2C_MODIFY_BEARER_REQ: u8 = 		                    34;
 pub const GTPV2C_MODIFY_BEARER_RSP: u8 = 		                    35;
 pub const GTPV2C_CHANGE_NTF_REQ: u8 = 		                        38;
 pub const GTPV2C_CHANGE_NTF_RSP: u8 = 		                        39;
 pub const GTPV2C_RESUME_NTF: u8 = 		                            164;
 pub const GTPV2C_RESUME_ACK: u8 = 		                            165;
- 		/* ---------------------------------- *
- 		 * Messages without explicit response *
- 		 * ---------------------------------- */
+
+// Messages without explicit response
 pub const GTPV2C_MODIFY_BEARER_CMD: u8 = 		                    64; 		/* MME/SGSN/ePDG to PGW - S11/S4, S5/S8, S2b */
 pub const GTPV2C_MODIFY_BEARER_FAILURE_IND: u8 = 		            65; 		/* PGW to MME/SGSN/ePDG - S5/S8, S11/S4, S2b */
 pub const GTPV2C_DELETE_BEARER_CMD: u8 = 		                    66; 		/* MME/SGSN to PGW - S11/S4, S5/S8 */
 pub const GTPV2C_DELETE_BEARER_FAILURE_IND: u8 = 		            67; 		/* PGW to MME/SGSN -S5/S8, S11/S4 */
-pub const GTPV2C_BEARER_RESOURCE_CMD: u8 = 		                68; 		/* MME/SGSN to PGW - S11/S4, S5/S8 */
-pub const GTPV2C_BEARER_RESOURCE_FAILURE_IND: u8 = 	            69; 		/* PGW to MME/SGSN -S5/S8, S11/S4 */
+pub const GTPV2C_BEARER_RESOURCE_CMD: u8 = 		                	68; 		/* MME/SGSN to PGW - S11/S4, S5/S8 */
+pub const GTPV2C_BEARER_RESOURCE_FAILURE_IND: u8 = 	            	69; 		/* PGW to MME/SGSN -S5/S8, S11/S4 */
 pub const GTPV2C_DOWNLINK_DATA_NOTIFICATION_FAILURE_IND: u8 = 		70; 		/* SGSN/MME to SGW - S4/S11 */
 pub const GTPV2C_TRACE_SESSION_ACTIVATION: u8 = 		            71; 		/* MME/SGSN/ePDG to PGW - S11/S4, S5/S8, S2b */
 pub const GTPV2C_TRACE_SESSION_DEACTIVATION: u8 = 		            72; 		/* MME/SGSN/ePDG to PGW - S11/S4, S5/S8, S2b */
-pub const GTPV2C_STOP_PAGING_IND: u8 = 		                    73; 		/* SGW to MME/SGSN - S11/S4 */
- 		/* ----------------------------------------- *
- 		 * PGW to SGSN/MME/ePDG (S5/S8, S4/S11, S2b) *
- 		 * ----------------------------------------- */
+pub const GTPV2C_STOP_PAGING_IND: u8 = 		                    	73; 		/* SGW to MME/SGSN - S11/S4 */
+
+// PGW to SGSN/MME/ePDG (S5/S8, S4/S11, S2b)
 pub const GTPV2C_CREATE_BEARER_REQ: u8 = 		                    95;
 pub const GTPV2C_CREATE_BEARER_RSP: u8 = 		                    96;
 pub const GTPV2C_UPDATE_BEARER_REQ: u8 = 		                    97;
 pub const GTPV2C_UPDATE_BEARER_RSP: u8 = 		                    98;
 pub const GTPV2C_DELETE_BEARER_REQ: u8 = 		                    99;
 pub const GTPV2C_DELETE_BEARER_RSP: u8 = 		                    100;
- 		/* ------------------------------------------------------------------------------------------ *
- 		 * PGW to MME, MME to PGW, SGW to PGW, SGW to MME, PGW to ePDG, ePDG to PGW (S5/S8, S11, S2b) *
- 		 * ------------------------------------------------------------------------------------------ */
+
+// PGW to MME, MME to PGW, SGW to PGW, SGW to MME, PGW to ePDG, ePDG to PGW (S5/S8, S11, S2b)
 pub const GTPV2C_DELETE_PDN_CONNECTION_SET_REQ: u8 = 		        101;
 pub const GTPV2C_DELETE_PDN_CONNECTION_SET_RSP: u8 = 		        102;
- 		/* --------------------------------------------------------------- *
- 		 * MME to MME, SGSN to MME, MME to SGSN, SGSN to SGSN (S3/S10/S16) *
- 		 * --------------------------------------------------------------- */
+
+// MME to MME, SGSN to MME, MME to SGSN, SGSN to SGSN (S3/S10/S16)
 pub const GTPV2C_IDENTIFICATION_REQ: u8 = 		                    128;
 pub const GTPV2C_IDENTIFICATION_RSP: u8 = 		                    129;
-pub const GTPV2C_CONTEXT_REQ: u8 = 		                        130;
-pub const GTPV2C_CONTEXT_RSP: u8 = 		                        131;
-pub const GTPV2C_CONTEXT_ACK: u8 = 		                        132;
+pub const GTPV2C_CONTEXT_REQ: u8 = 		                        	130;
+pub const GTPV2C_CONTEXT_RSP: u8 = 		                        	131;
+pub const GTPV2C_CONTEXT_ACK: u8 = 		                        	132;
 pub const GTPV2C_FORWARD_RELOCATION_REQ: u8 = 		                133;
 pub const GTPV2C_FORWARD_RELOCATION_RSP: u8 = 		                134;
-pub const GTPV2C_FORWARD_RELOCATION_COMPLETE_NTF: u8 = 		    135;
-pub const GTPV2C_FORWARD_RELOCATION_COMPLETE_ACK: u8 = 		    136;
+pub const GTPV2C_FORWARD_RELOCATION_COMPLETE_NTF: u8 = 		    	135;
+pub const GTPV2C_FORWARD_RELOCATION_COMPLETE_ACK: u8 = 		    	136;
 pub const GTPV2C_FORWARD_ACCESS_CONTEXT_NTF: u8 = 		            137;
 pub const GTPV2C_FORWARD_ACCESS_CONTEXT_ACK: u8 = 		            138;
 pub const GTPV2C_RELOCATION_CANCEL_REQ: u8 = 		                139;
 pub const GTPV2C_RELOCATION_CANCEL_RSP: u8 = 		                140;
 pub const GTPV2C_CONFIGURE_TRANSFER_TUNNEL: u8 = 		            141;
 pub const GTPV2C_RAN_INFORMATION_RELAY: u8 = 		                152;
- 		/* ----------------------------- *
- 		 * SGSN to MME, MME to SGSN (S3) *
- 		 * ----------------------------- */
+
+// SGSN to MME, MME to SGSN (S3)
 pub const GTPV2C_DETACH_NTF: u8 = 		                            149;
 pub const GTPV2C_DETACH_ACK: u8 = 		                            150;
 pub const GTPV2C_CS_PAGING_INDICATION: u8 = 		                151;
 pub const GTPV2C_ALERT_MME_NTF: u8 = 		                        153;
 pub const GTPV2C_ALERT_MME_ACK: u8 = 		                        154;
-pub const GTPV2C_UE_ACTIVITY_NTF: u8 = 		                    155;
-pub const GTPV2C_UE_ACTIVITY_ACK: u8 = 		                    156;
- 		/* ---------------------------------------- *
- 		 * SGSN/MME to SGW, SGSN to MME (S4/S11/S3) *
-         * SGSN to SGSN (S16), SGW to PGW (S5/S8)   *
- 		 * ---------------------------------------- */
-pub const GTPV2C_SUSPEND_NTF: u8 = 		                        162;
-pub const GTPV2C_SUSPEND_ACK: u8 = 		                        163;
- 		/* ------------------------ *
- 		 * SGSN/MME to SGW (S4/S11) *
- 		 * ------------------------ */
+pub const GTPV2C_UE_ACTIVITY_NTF: u8 = 		                    	155;
+pub const GTPV2C_UE_ACTIVITY_ACK: u8 = 		                    	156;
+
+// SGSN/MME to SGW, SGSN to MME (S4/S11/S3)
+// SGSN to SGSN (S16), SGW to PGW (S5/S8)
+pub const GTPV2C_SUSPEND_NTF: u8 = 		                        	162;
+pub const GTPV2C_SUSPEND_ACK: u8 = 		                        	163;
+
+// SGSN/MME to SGW (S4/S11)
 pub const GTPV2C_CREATE_FORWARDING_TUNNEL_REQ: u8 = 		        160;
 pub const GTPV2C_CREATE_FORWARDING_TUNNEL_RSP: u8 = 		        161;
-pub const GTPV2C_CREATE_INDIRECT_DATA_FORWARDING_TUNNEL_REQ: u8 = 		166;
-pub const GTPV2C_CREATE_INDIRECT_DATA_FORWARDING_TUNNEL_RSP: u8 = 		167;
-pub const GTPV2C_DELETE_INDIRECT_DATA_FORWARDING_TUNNEL_REQ: u8 = 		168;
-pub const GTPV2C_DELETE_INDIRECT_DATA_FORWARDING_TUNNEL_RSP: u8 = 		169;
+pub const GTPV2C_CREATE_INDIRECT_DATA_FORWARD_TUNNEL_REQ: u8 = 		166;
+pub const GTPV2C_CREATE_INDIRECT_DATA_FORWARD_TUNNEL_RSP: u8 = 		167;
+pub const GTPV2C_DELETE_INDIRECT_DATA_FORWARD_TUNNEL_REQ: u8 = 		168;
+pub const GTPV2C_DELETE_INDIRECT_DATA_FORWARD_TUNNEL_RSP: u8 = 		169;
 pub const GTPV2C_RELEASE_ACCESS_BEARERS_REQ: u8 = 		            170;
 pub const GTPV2C_RELEASE_ACCESS_BEARERS_RSP: u8 = 		            171;
- 		/* ------------------------ *
- 		 * SGW to SGSN/MME (S4/S11) *
- 		 * ------------------------ */
+
+// SGW to SGSN/MME (S4/S11)
 pub const GTPV2C_DOWNLINK_DATA_NOTIFICATION: u8 = 		            176;
 pub const GTPV2C_DOWNLINK_DATA_NOTIFICATION_ACK: u8 = 		        177;
 pub const GTPV2C_PGW_RESTART_NOTIFICATION: u8 = 		            179;
 pub const GTPV2C_PGW_RESTART_NOTIFICATION_ACK: u8 = 		        180;
- 		/* ------------------------------ *
- 		 * SGW to PGW, PGW to SGW (S5/S8) *
- 		 * ------------------------------ */
+
+// SGW to PGW, PGW to SGW (S5/S8)
 pub const GTPV2C_UPDATE_PDN_CONNECTION_SET_REQ: u8 = 		        200;
 pub const GTPV2C_UPDATE_PDN_CONNECTION_SET_RSP: u8 = 		        201;
- 		/* ---------------- *
- 		 * MME to SGW (S11) *
- 		 * ---------------- */
+
+// MME to SGW (S11)
 pub const GTPV2C_MODIFY_ACCESS_BEARERS_REQ: u8 = 		            211;
 pub const GTPV2C_MODIFY_ACCESS_BEARERS_RSP: u8 = 		            212;
- 		/* --------------------------- *
- 		 * MBMS GW to MME/SGSN (Sm/Sn) *
- 		 * --------------------------- */
+
+// MBMS GW to MME/SGSN (Sm/Sn)
 pub const GTPV2C_MBMS_SESSION_START_REQ: u8 = 		                231;
 pub const GTPV2C_MBMS_SESSION_START_RSP: u8 = 		                232;
-pub const GTPV2C_MBMS_SESSION_UPDATE_REQ: u8 = 		            233;
-pub const GTPV2C_MBMS_SESSION_UPDATE_RSP: u8 = 		            234;
+pub const GTPV2C_MBMS_SESSION_UPDATE_REQ: u8 = 		            	233;
+pub const GTPV2C_MBMS_SESSION_UPDATE_RSP: u8 = 		            	234;
 pub const GTPV2C_MBMS_SESSION_STOP_REQ: u8 = 		                235;
 pub const GTPV2C_MBMS_SESSION_STOP_RSP: u8 = 		                236;
-pub const GTPV2C_MSG_MAX: u8 = 		                            255;
+pub const GTPV2C_MSG_MAX: u8 = 		                            	255;
 
 
-/*
- * GTPv2-C Information Element Type Values
- * ======================================================
- */
-pub const GTPV2C_IE_RESERVED: u8 = 		                        0;
-pub const GTPV2C_IE_IMSI: u8 = 		                            1; 		/* International Mobile Subscriber Identity */
-pub const GTPV2C_IE_CAUSE: u8 = 		                            2;
-pub const GTPV2C_IE_RECOVERY: u8 = 		                        3; 		/* Restart Counter */
+// GTPv2-C Information Element Type Values
+pub const GTPV2C_IE_RESERVED: u8 =								0;
+pub const GTPV2C_IE_IMSI: u8 =									1; 		/* International Mobile Subscriber Identity */
+pub const GTPV2C_IE_CAUSE: u8 =									2;
+pub const GTPV2C_IE_RECOVERY: u8 =								3; 		/* Restart Counter */
  		/* Reserved for S101 interface 		4 to 50 */
-pub const GTPV2C_IE_STN_SR: u8 = 		                            51;
+pub const GTPV2C_IE_STN_SR: u8 =								51;
  		/* Reserved for Sv interface 		52 to 70 */
-pub const GTPV2C_IE_APN: u8 = 		                                71; 		/* Access Point Name */
+pub const GTPV2C_IE_APN: u8 =									71; 		/* Access Point Name */
 pub const GTPV2C_IE_AMBR: u8 = 		                            72; 		/* Aggregate Maximum Bit Rate */
-pub const GTPV2C_IE_EBI: u8 = 		                                73; 		/* EPS Bearer ID */
-pub const GTPV2C_IE_IP_ADDRESS: u8 = 		                        74;
-pub const GTPV2C_IE_MEI: u8 = 		                                75; 		/* Mobile Equipment Identity */
-pub const GTPV2C_IE_MSISDN: u8 = 		                            76;
-pub const GTPV2C_IE_INDICATION: u8 = 		                        77;
-pub const GTPV2C_IE_PCO: u8 = 		                                78; 		/* Protocol Configuration Options */
-pub const GTPV2C_IE_PAA: u8 = 		                                79; 		/* PDN Address Allocation */
-pub const GTPV2C_IE_BEARER_QOS: u8 = 		                        80; 		/* Bearer Level Quality of Service */
-pub const GTPV2C_IE_FLOW_QOS: u8 = 		                        81; 		/* Flow Quality of Service */
-pub const GTPV2C_IE_RAT_TYPE: u8 = 		                        82;
-pub const GTPV2C_IE_SERVING_NETWORK: u8 = 		                    83;
-pub const GTPV2C_IE_BEARER_TFT: u8 = 		                        84; 		/* EPS Bearer Level Traffic Flow Template */
-pub const GTPV2C_IE_TAD: u8 = 		                                85; 		/* Traffic Aggregation Description */
-pub const GTPV2C_IE_ULI: u8 = 		                                86; 		/* User Location Information */
-pub const GTPV2C_IE_FTEID: u8 = 		                            87; 		/* Fully Qualified Tunnel Endpoint Identifier */
-pub const GTPV2C_IE_TMSI: u8 = 		                            88;
-pub const GTPV2C_IE_GLOBAL_CN_ID: u8 = 		                    89;
-pub const GTPV2C_IE_S103PDF: u8 = 		                            90; 		/* S103 PDN Data Forwarding Info */
-pub const GTPV2C_IE_S1UDF: u8 = 		                            91; 		/* S1-U Data Forwarding Info */
-pub const GTPV2C_IE_DELAY_VALUE: u8 = 		                        92;
-pub const GTPV2C_IE_BEARER_CONTEXT: u8 = 		                    93;
-pub const GTPV2C_IE_CHARGING_ID: u8 = 		                        94;
-pub const GTPV2C_IE_CHARGING_CHARACTERISTICS: u8 = 		        95;
-pub const GTPV2C_IE_TRACE_INFORMATION: u8 = 		                96;
-pub const GTPV2C_IE_BEARER_FLAGS: u8 = 		                    97;
+pub const GTPV2C_IE_EBI: u8 =									73; 		/* EPS Bearer ID */
+pub const GTPV2C_IE_IP_ADDRESS: u8 =							74;
+pub const GTPV2C_IE_MEI: u8 =									75; 		/* Mobile Equipment Identity */
+pub const GTPV2C_IE_MSISDN: u8 =								76;
+pub const GTPV2C_IE_INDICATION: u8 =							77;
+pub const GTPV2C_IE_PCO: u8 =									78; 		/* Protocol Configuration Options */
+pub const GTPV2C_IE_PAA: u8 =									79; 		/* PDN Address Allocation */
+pub const GTPV2C_IE_BEARER_QOS: u8 =							80; 		/* Bearer Level Quality of Service */
+pub const GTPV2C_IE_FLOW_QOS: u8 =								81; 		/* Flow Quality of Service */
+pub const GTPV2C_IE_RAT_TYPE: u8 =								82;
+pub const GTPV2C_IE_SERVING_NETWORK: u8 =						83;
+pub const GTPV2C_IE_BEARER_TFT: u8 =							84; 		/* EPS Bearer Level Traffic Flow Template */
+pub const GTPV2C_IE_TAD: u8 =									85; 		/* Traffic Aggregation Description */
+pub const GTPV2C_IE_ULI: u8 =									86; 		/* User Location Information */
+pub const GTPV2C_IE_FTEID: u8 =									87; 		/* Fully Qualified Tunnel Endpoint Identifier */
+pub const GTPV2C_IE_TMSI: u8 =									88;
+pub const GTPV2C_IE_GLOBAL_CN_ID: u8 =							89;
+pub const GTPV2C_IE_S103PDF: u8 =								90; 		/* S103 PDN Data Forwarding Info */
+pub const GTPV2C_IE_S1UDF: u8 =									91; 		/* S1-U Data Forwarding Info */
+pub const GTPV2C_IE_DELAY_VALUE: u8 =							92;
+pub const GTPV2C_IE_BEARER_CONTEXT: u8 =						93;
+pub const GTPV2C_IE_CHARGING_ID: u8 =							94;
+pub const GTPV2C_IE_CHARGING_CHARACTERISTICS: u8 =				95;
+pub const GTPV2C_IE_TRACE_INFORMATION: u8 =						96;
+pub const GTPV2C_IE_BEARER_FLAGS: u8 =							97;
  		/* Reserved: u8 = 		98 */
-pub const GTPV2C_IE_PDN_TYPE: u8 = 		                        99;
-pub const GTPV2C_IE_PROCEDURE_TRANSACTION_ID: u8 = 		        100;
-pub const GTPV2C_IE_DRX_PARAMETER: u8 = 		                    101;
+pub const GTPV2C_IE_PDN_TYPE: u8 =								99;
+pub const GTPV2C_IE_PROCEDURE_TRANSACTION_ID: u8 =				100;
+pub const GTPV2C_IE_DRX_PARAMETER: u8 =							101;
  		/* Reserved 		102 */
  		/* MM Context 		103 to 108 */
-pub const GTPV2C_IE_PDN_CONNECTION: u8 = 		                    109;
-pub const GTPV2C_IE_PDU_NUMBERS: u8 = 		                        110;
-pub const GTPV2C_IE_PTMSI: u8 = 		                            111;
-pub const GTPV2C_IE_PTMSI_SIGNATURE: u8 = 		                    112;
-pub const GTPV2C_IE_HOP_COUNTER: u8 = 		                        113;
-pub const GTPV2C_IE_UE_TIME_ZONE: u8 = 		                    114;
-pub const GTPV2C_IE_TRACE_REFERENCE: u8 = 		                    115;
-pub const GTPV2C_IE_COMPLETE_REQUEST_MESSAGE: u8 = 		        116;
-pub const GTPV2C_IE_GUTI: u8 = 		                            117;
-pub const GTPV2C_IE_F_CONTAINER: u8 = 		                        118;
-pub const GTPV2C_IE_F_CAUSE: u8 = 		                            119;
-pub const GTPV2C_IE_SELECTED_PLMN_ID: u8 = 		                120;
-pub const GTPV2C_IE_TARGET_IDENTIFICATION: u8 = 		            121;
+pub const GTPV2C_IE_PDN_CONNECTION: u8 =						109;
+pub const GTPV2C_IE_PDU_NUMBERS: u8 =							110;
+pub const GTPV2C_IE_PTMSI: u8 =									111;
+pub const GTPV2C_IE_PTMSI_SIGNATURE: u8 =						112;
+pub const GTPV2C_IE_HOP_COUNTER: u8 =							113;
+pub const GTPV2C_IE_UE_TIME_ZONE: u8 =							114;
+pub const GTPV2C_IE_TRACE_REFERENCE: u8 =						115;
+pub const GTPV2C_IE_COMPLETE_REQUEST_MESSAGE: u8 =				116;
+pub const GTPV2C_IE_GUTI: u8 =									117;
+pub const GTPV2C_IE_F_CONTAINER: u8 =							118;
+pub const GTPV2C_IE_F_CAUSE: u8 =								119;
+pub const GTPV2C_IE_SELECTED_PLMN_ID: u8 =						120;
+pub const GTPV2C_IE_TARGET_IDENTIFICATION: u8 =					121;
  		/* Reserved 		122 */
-pub const GTPV2C_IE_PACKET_FLOW_ID: u8 = 		                    123;
-pub const GTPV2C_IE_RAB_CONTEXT: u8 = 		                        124;
-pub const GTPV2C_IE_SOURCE_RNC_PDCP_CONTEXT_INFO: u8 = 		    125;
-pub const GTPV2C_IE_UDP_SOURCE_PORT_NUMBER: u8 = 		            126;
-pub const GTPV2C_IE_APN_RESTRICTION: u8 =                     		127;
-pub const GTPV2C_IE_SELECTION_MODE: u8 = 		                    128;
-pub const GTPV2C_IE_SOURCE_IDENTIFICATION: u8 = 		            129;
+pub const GTPV2C_IE_PACKET_FLOW_ID: u8 =						123;
+pub const GTPV2C_IE_RAB_CONTEXT: u8 =							124;
+pub const GTPV2C_IE_SOURCE_RNC_PDCP_CONTEXT_INFO: u8 =			125;
+pub const GTPV2C_IE_UDP_SOURCE_PORT_NUMBER: u8 =				126;
+pub const GTPV2C_IE_APN_RESTRICTION: u8 =						127;
+pub const GTPV2C_IE_SELECTION_MODE: u8 =						128;
+pub const GTPV2C_IE_SOURCE_IDENTIFICATION: u8 =					129;
  		/* Reserved 		130 */
-pub const GTPV2C_IE_CHANGE_REPORTING_ACTION: u8 = 		            131;
-pub const GTPV2C_IE_FQ_CSID: u8 = 		                            132; 		/* Fully Qualified PDN Connection Set Identifier */
-pub const GTPV2C_IE_CHANNEL_NEEDED: u8 = 		                    133;
-pub const GTPV2C_IE_EMLPP_PRIORITY: u8 = 		                    134;
-pub const GTPV2C_IE_NODE_TYPE: u8 = 		                        135;
-pub const GTPV2C_IE_FQDN: u8 = 		                            136; 		/* Fully Qualified Domain Name */
-pub const GTPV2C_IE_TI: u8 = 		                                137; 		/* Transaction Identifier */
-pub const GTPV2C_IE_MBMS_SESSION_DURATION: u8 = 		            138;
-pub const GTPV2C_IE_MBMS_SERIVCE_AREA: u8 = 		                139;
-pub const GTPV2C_IE_MBMS_SESSION_IDENTIFIER: u8 = 		            140;
-pub const GTPV2C_IE_MBMS_FLOW_IDENTIFIER: u8 = 		            141;
-pub const GTPV2C_IE_MBMS_IP_MULTICAST_DISTRIBUTION: u8 = 		    142;
-pub const GTPV2C_IE_MBMS_DISTRIBUTION_ACK: u8 = 		            143;
-pub const GTPV2C_IE_RFSP_INDEX: u8 = 		                        144;
-pub const GTPV2C_IE_UCI: u8 = 		                                145; 		/* User CSG Information */
-pub const GTPV2C_IE_CSG_INFORMATION_REPORTING_ACTION: u8 = 		146;
-pub const GTPV2C_IE_CSG_ID: u8 = 		                            147;
-pub const GTPV2C_IE_CMI: u8 = 		                                148; 		/* CSG Membership Indication */
-pub const GTPV2C_IE_SERVICE_INDICATOR: u8 = 		                149;
-pub const GTPV2C_IE_DETACH_TYPE: u8 = 		                        150;
-pub const GTPV2C_IE_LDN: u8 = 		                                151; 		/* Local Distiguished Name */
-pub const GTPV2C_IE_NODE_FEATURES: u8 = 		                    152;
-pub const GTPV2C_IE_MBMS_TIME_TO_DATA_TRANSFER: u8 = 		        153;
-pub const GTPV2C_IE_THROTTING: u8 = 		                        154;
-pub const GTPV2C_IE_ARP: u8 = 		                                155; 		/* Allocation/Retention Priority */
-pub const GTPV2C_IE_EPC_TIMER: u8 = 		                        156;
-pub const GTPV2C_IE_SIGNALLING_PRIORITY_INDICATION: u8 =     		157;
-pub const GTPV2C_IE_TMGI: u8 = 		                            158; 		/* Temporary Mobile Group Identity */
-pub const GTPV2C_IE_ADDITIONAL_MM_CONTEXT_FOR_SRVCC: u8 =     		159;
-pub const GTPV2C_IE_ADDITIONAL_FLAGS_FOR_SRVCC: u8 = 		        160;
-pub const GTPV2C_IE_MMBR: u8 = 		                            161; 		/* Max MBR/APN-AMBR */
-pub const GTPV2C_IE_MDT_CONFIGURATION: u8 = 		                162;
-pub const GTPV2C_IE_APCO: u8 = 		                            163; 		/* Additional Protocol Configuration Options */
+pub const GTPV2C_IE_CHANGE_REPORTING_ACTION: u8 =				131;
+pub const GTPV2C_IE_FQ_CSID: u8 =								132; 		/* Fully Qualified PDN Connection Set Identifier */
+pub const GTPV2C_IE_CHANNEL_NEEDED: u8 =						133;
+pub const GTPV2C_IE_EMLPP_PRIORITY: u8 =						134;
+pub const GTPV2C_IE_NODE_TYPE: u8 =								135;
+pub const GTPV2C_IE_FQDN: u8 =									136; 		/* Fully Qualified Domain Name */
+pub const GTPV2C_IE_TI: u8 =									137; 		/* Transaction Identifier */
+pub const GTPV2C_IE_MBMS_SESSION_DURATION: u8 =					138;
+pub const GTPV2C_IE_MBMS_SERIVCE_AREA: u8 =						139;
+pub const GTPV2C_IE_MBMS_SESSION_IDENTIFIER: u8 =				140;
+pub const GTPV2C_IE_MBMS_FLOW_IDENTIFIER: u8 =					141;
+pub const GTPV2C_IE_MBMS_IP_MULTICAST_DISTRIBUTION: u8 =		142;
+pub const GTPV2C_IE_MBMS_DISTRIBUTION_ACK: u8 =					143;
+pub const GTPV2C_IE_RFSP_INDEX: u8 =							144;
+pub const GTPV2C_IE_UCI: u8 =									145; 		/* User CSG Information */
+pub const GTPV2C_IE_CSG_INFORMATION_REPORTING_ACTION: u8 =		146;
+pub const GTPV2C_IE_CSG_ID: u8 =								147;
+pub const GTPV2C_IE_CMI: u8 =									148; 		/* CSG Membership Indication */
+pub const GTPV2C_IE_SERVICE_INDICATOR: u8 =						149;
+pub const GTPV2C_IE_DETACH_TYPE: u8 =							150;
+pub const GTPV2C_IE_LDN: u8 =									151; 		/* Local Distiguished Name */
+pub const GTPV2C_IE_NODE_FEATURES: u8 =							152;
+pub const GTPV2C_IE_MBMS_TIME_TO_DATA_TRANSFER: u8 =			153;
+pub const GTPV2C_IE_THROTTING: u8 =								154;
+pub const GTPV2C_IE_ARP: u8 =									155; 		/* Allocation/Retention Priority */
+pub const GTPV2C_IE_EPC_TIMER: u8 =								156;
+pub const GTPV2C_IE_SIGNALLING_PRIORITY_INDICATION: u8 =		157;
+pub const GTPV2C_IE_TMGI: u8 =									158; 		/* Temporary Mobile Group Identity */
+pub const GTPV2C_IE_ADDITIONAL_MM_CONTEXT_FOR_SRVCC: u8 =		159;
+pub const GTPV2C_IE_ADDITIONAL_FLAGS_FOR_SRVCC: u8 =			160;
+pub const GTPV2C_IE_MMBR: u8 =									161; 		/* Max MBR/APN-AMBR */
+pub const GTPV2C_IE_MDT_CONFIGURATION: u8 =						162;
+pub const GTPV2C_IE_APCO: u8 =									163; 		/* Additional Protocol Configuration Options */
  		/* Spare. For future use. 		164 to 254 */
-pub const GTPV2C_IE_PRIVATE_EXTENSION: u8 = 		                255;
-pub const GTPV2C_IE_TYPE_MAX: u8 = 		                        255;
+pub const GTPV2C_IE_PRIVATE_EXTENSION: u8 =						255;
+pub const GTPV2C_IE_TYPE_MAX: u8 =								255;
 
 
 
