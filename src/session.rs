@@ -2,7 +2,7 @@ use rand::Rng;
 use dashmap::DashMap;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, RwLock, Mutex};
-use crate::gtpv2_recv::BearerQos;
+use crate::gtpv2_recv::{BearerQos, BearerCnxt};
 use log::{debug, error, info, trace, warn};
 
 #[derive(Debug, Clone)]
@@ -84,14 +84,28 @@ impl SessionList {
 }
 
 
+#[derive(Debug, Clone)]
+pub struct GtpIfaceType {
+    pub teid:       u32,
+    pub iface_type: u8,
+    pub peerip: Ipv4Addr,
+}
+impl GtpIfaceType {
+    fn new() -> Self {
+        GtpIfaceType {
+            teid:       0,
+            iface_type: 0,
+            peerip:     Ipv4Addr::new(0,0,0,0),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct bearer_info {
     pub used:       bool,
     pub ebi:        u8,
     pub lbi:        u8,
-    pub teid:       u32,
-    // pub peerip:     Ipv4Addr,
+    pub ifaces:     Vec<GtpIfaceType>,
     // pub instance:   u8,
     // pub reserved:   u8,
     // pub pci:        u8,
@@ -106,8 +120,7 @@ impl bearer_info {
             used:   true,
             ebi:    0,
             lbi:    0,
-            teid:   0,
-            // peerip: Ipv4Addr::new(0,0,0,0),
+            ifaces: Vec::new(),
 			QoS:	BearerQos::new(),
         }
     }
@@ -192,6 +205,13 @@ impl Session {
 			// Ipv4Addr::new(0,0,0,0), 0, "".to_string()),
 		}
 	}
+
+    pub fn bearer_cnt_check(&self) -> bool {
+        if self.bearer.len() >= 11 {
+            return false;
+        }
+        return true;
+    }
 }
 
 
@@ -273,38 +293,73 @@ pub fn alloc_pdn( session: &mut Arc<Mutex<Session>>,
 	return Ok(session.pdn.len());
 }
 
+pub fn modify_bearer(bearer: &mut bearer_info, bearer_info: BearerCnxt)
+{
+    for iface_info in bearer_info.iface_info {
+        if iface_info.used == false {
+            continue;
+        }
+
+        if bearer.ebi != bearer_info.ebi {
+            continue;
+        }
+
+        let mut iface = GtpIfaceType::new();
+        iface.iface_type =	iface_info.iface_type;
+        iface.peerip =	    iface_info.addr;
+        iface.teid =	    iface_info.teid;
+
+        bearer.ifaces.push(iface);
+    }
+}
 
 pub fn alloc_bearer(session: &mut Arc<Mutex<Session>>,
-    lbi: u8, ebi: u8, teid: u32, bearer_qos: BearerQos)
+    lbi: u8, bearers: Vec<BearerCnxt>)
 -> Result<usize,String>
 {
 	let mut session = session.lock().unwrap();
-    let bearer_index = session.bearer.len();
-    if bearer_index >= 11 {
+
+    if session.bearer_cnt_check() == false {
         return Err("Bearer is full".to_string());
     }
 
-    let mut bearer = bearer_info::new();
-    bearer.ebi=		ebi;
-    bearer.lbi=		lbi;
-    bearer.teid=	teid;
-	bearer.QoS =	bearer_qos;
+    for bearer_info in bearers {
 
-    session.bearer.push(bearer);
+        let mut bearer = bearer_info::new();
+        bearer.ebi=		bearer_info.ebi;
+        bearer.lbi=		lbi;
+
+        for iface_info in bearer_info.iface_info {
+            if iface_info.used == false {
+                continue;
+            }
+
+            let mut iface = GtpIfaceType::new();
+            iface.teid =	    iface_info.teid;
+            iface.peerip =	    iface_info.addr;
+            iface.iface_type =	iface_info.iface_type;
+
+            bearer.ifaces.push(iface);
+        }
+        bearer.QoS =	bearer_info.bearer_qos;
+        session.bearer.push(bearer);
+    }
+
     Ok(session.bearer.len())
 }
 
 
-// pub fn find_bearer(session: &mut Arc<Mutex<Session>>, ebi: u8)
-// // -> Vec<&mut bearer_info>
-// -> Vec<bearer_info>
-// {
-// 	let mut session = session.lock().unwrap();
+pub fn find_bearer(session: Arc<Mutex<Session>>, ebi: u8)
+-> Option<usize>
+{
+    let mut session = session.lock().unwrap();
 
-// 	let result = session.bearer.iter_mut()
-// 		.find(|bearer|bearer.lbi == ebi).into_iter().collect();
-// 	return result;
-// }
+    // let test =
+    session.bearer.iter()
+        .position(|bearer| bearer.ebi == ebi)
+
+    // return test;
+}
 
 
 pub fn delete_pdn_and_bearer(session: &mut Arc<Mutex<Session>>, ebi: u8) {

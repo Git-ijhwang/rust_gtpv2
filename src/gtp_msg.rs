@@ -10,14 +10,12 @@ use crate::session::*;
 
 // #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-// #[derive(Debug, Clone, Copy, Pod, Zeroable)] // bytemuck의 Pod와 Zeroable 트레잇 구현
 pub struct Gtpv2CHeader {
     pub v:      u8,     // Version (3 bits) + P flag (1 bit) + T flag (1 bit) + MP flag (1bit + 2 spare bits 
     pub t:      u8,     // Message type (8 bits)
     pub l:      u16,    // Message length (16 bits)
     pub teid:   u32,    // TEID (32 bits), optional based on T flag
     pub s:      u32,    // Sequence number (24 bits) + 4  Message Priority + 4 spare bits
-    // pub ies: Vec<u8>,
 }
 
 
@@ -25,11 +23,11 @@ pub struct Gtpv2CHeader {
 impl Gtpv2CHeader {
     pub fn new() -> Self {
         Self {
-            v : 0,
-            t : 0,
-            l : 0,
-            teid : 0,
-            s : 0,
+            v:		0,
+            t:		0,
+            l:		0,
+            teid:	0,
+            s:		0,
         }
     }
 
@@ -39,60 +37,60 @@ impl Gtpv2CHeader {
     -> (&[u8], usize)
     {
 
-        let mut v = (GTP_VERSION & 0b111) << 5; // Version은 상위 3비트
+        let mut v = (GTP_VERSION & 0b111) << 5; // First 3 bits are for Version
         let mut length = 8; //without TEID Field.
         let mut l = l;
 
         if p_flag {
-            v |= 0b0001_0000; // P-flag 설정
+            v |= 0b0001_0000; // Set P-flag
         }
 
         if t_flag {
-            v |= 0b0000_1000; // T-flag 설정
-            length += 4; // Add 4bytes for TEID Field
+            v |= 0b0000_1000;	// Set T-flag
+            length += 4;		// Add 4bytes for TEID Field
             l += 4;
         }
 
         let s = s << 8;
         if mp_flag {
-            v |= 0b0000_0100; // T-flag 설정
-            // s |= mp as u32;
+            v |= 0b0000_0100; // Set T-flag
         }
 
         let len     = l.to_be_bytes();
-        let teid  = teid.to_be_bytes();
         let seq     = s.to_be_bytes();
+        let teid    = teid.to_be_bytes();
 
         if t_flag {
-            p[..length].copy_from_slice(
-                &[ v, t, len[0], len[1],
+            p[..length].copy_from_slice( &[
+                v, t, len[0], len[1],
                 teid[0], teid[1], teid[2], teid[3],
-                seq[0], seq[1], seq[2], seq[3] ]);
+                seq[0], seq[1], seq[2], seq[3]
+            ]);
         }
         else {
-            p[..length].copy_from_slice(
-                &[ v, t, len[0], len[1],
-                seq[0], seq[1], seq[2], seq[3] ]);
+            p[..length].copy_from_slice( &[
+                v, t, len[0], len[1],
+                seq[0], seq[1], seq[2], seq[3]
+            ]);
         }
 
         (&p[..length as usize], length as usize)
     }
-
 }
 
 
 /* GTPv2 IE */
 pub struct gtpv2c_ie1 {
-    t:			u8,     /* type (1octet) */
-    l:			u16,    /* length (2octet) */
-    i:			u8,     /* spare (4bit) + instance  (4bit)*/
-    v:			u8,     /* value (1octet) */
+    t:		u8,     /* type (1octet) */
+    l:		u16,    /* length (2octet) */
+    i:		u8,     /* spare (4bit) + instance  (4bit)*/
+    v:		u8,     /* value (1octet) */
 }
 
 impl gtpv2c_ie1 {
     pub fn new(p: &mut [u8], t: u8, i: u8, v: u8){
         let l = 1u16.to_be_bytes();
-        let mut i =i& 0x0f;
+        let i =i& 0x0f;
 
         &p[..5].copy_from_slice( &[ t, l[0], l[1], i, v, ] );
     }
@@ -100,30 +98,30 @@ impl gtpv2c_ie1 {
 
 
 struct gtpv2c_ie2 {
-    t:			u8, /* type (1octet) */
+    t:			u8,  /* type (1octet) */
     l:			u16, /* length (2octet) */
-    i:			u8, /* spare (4bit) + instance (4bit) */
+    i:			u8,  /* spare (4bit) + instance (4bit) */
     v:			u16, /* value (2octet) */
 }
 
 struct gtpv2c_ie4 {
-    t:			u8	, /* type (1octet) */
+    t:			u8,  /* type (1octet) */
     l:			u16, /* length (2octet) */
-    i:			u8, /* spare (4bit) + instance (4bit) */
+    i:			u8,  /* spare (4bit) + instance (4bit) */
     v:			u32, /* value (4octet) */
 }
 
 struct gtpv2c_ie8 {
-    t:			u8, /* type (1octet) */
+    t:			u8,  /* type (1octet) */
     l:			u16, /* length (2octet) */
-    i:			u8, /* spare (4bit) + instance (4bit) */
+    i:			u8,  /* spare (4bit) + instance (4bit) */
     v:			u64, /* value (8octets) */
 }
 
 struct gtpv2c_ie_tlv {
-    t:			u8, /* type (1octet)*/
+    t:			u8,  /* type (1octet)*/
     l:			u16, /* length (2octet) */
-    i:			u8, /* spare (4bit) + instance (4bit) */
+    i:			u8,  /* spare (4bit) + instance (4bit) */
 }
 
 
@@ -226,7 +224,9 @@ pub fn gtpv2_get_ie_under_tv4( data: &[u8],
 //     Ok(())
 // }
 
-pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32) -> Result<(), &'static str> {
+pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32)
+-> Result<(), &'static str>
+{
     if data.len() < 8 {
         return Err("Insufficient data length for MBR");
     }
@@ -247,7 +247,7 @@ gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
     // let session = find_session_by_imsi(imsi.clone());
 
     //IE CAUSE
-    let mut total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
+    let total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
 
     trace!("Thread Spwan 'make gtpv2' function");
     tokio::spawn(
@@ -260,24 +260,13 @@ gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
 
 
 pub async fn
-gtp_send_create_session_response (peer:Peer,
-    // imsi:String,
-    session:Arc<Mutex<Session>>,
-    pdn_index: usize)
+gtp_send_create_session_response (peer:Peer, session:Arc<Mutex<Session>>, pdn_index: usize)
 -> Result<(), String>
 {
     let mut buffer:[u8;1024] = [0u8;1024];
     let session = session.lock().unwrap();
 
     trace!("Start Create Session Response ");
-
-    // let arc_session;
-    // let session;
-    // match find_session_by_imsi(imsi.clone()) {
-    //     // Ok(sess) => arc_session = sess.lock().unwrap().clone(),
-    //     Ok(sess) => session = sess.clone(),
-    //     Err(error) => return Err(error),
-    // }
 
     //IE CAUSE
     let mut total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
@@ -307,20 +296,13 @@ gtp_send_create_session_response (peer:Peer,
 }
 
 
-pub fn gtp_send_modify_bearer_response (peer:Peer,
-    // imsi:&String,
-    session:Arc<Mutex<Session>>,
-    pdn_index: usize)
+pub fn gtp_send_modify_bearer_response (peer:Peer, session:Arc<Mutex<Session>>, pdn_index: usize)
 -> Result<(), String>
 {
     let session = session.lock().unwrap();
 
-    // match find_session_by_imsi(imsi.clone()) {
-    //     Ok(value) => session = value.clone(),
-    //     _ => return Err("Error No session".to_string()),
-    // }
-
     let mut buffer:[u8;1024] = [0u8;1024];
+
 
     //IE Cause
     //IE MSISDN
