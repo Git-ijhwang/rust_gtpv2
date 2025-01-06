@@ -17,14 +17,6 @@ impl TeidList {
             teid_map: DashMap::new()
         }
     }
-    // pub fn find_session_by_teid(&self, teid: &u32) -> Result<String, String> {
-    //     // let ret = 
-    //     match self.teid_map.get(teid)//.map(|entry| Arc::clone(entry.value()))
-    //     {
-    //         Some(value) => return Ok(value.clone()),
-    //         _ => return Err("Can't fine IMSI by teid".to_string()),
-    //     }
-    // }
 
 	pub fn add(&self, teid: u32, session: Arc<Mutex<Session>>) {
 		self.teid_map.insert(teid, session);
@@ -369,7 +361,7 @@ pub fn delete_pdn_and_bearer(session: &mut Arc<Mutex<Session>>, ebi: u8) {
         let pdn = session.pdn.remove(pdn_index);
         info!("Deleted pdn: {:?}", pdn);
 
-        // Bearer 삭제
+        // Delete Bearer
         let bearer_indices: Vec<usize> = session.bearer
             .iter()
             .enumerate()

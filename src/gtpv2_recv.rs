@@ -1,23 +1,17 @@
-use std::f32::consts::E;
-use std::hash::Hash;
-use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket, SocketAddr};
-use std::ptr::slice_from_raw_parts;
-use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use core::result::Result;
-use std::{clone, thread};
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use log::{debug, error, info, trace, warn};
+use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket, SocketAddr};
 
+use crate::peers::*;
+use crate::ippool::*;
+use crate::session::*;
+use crate::gtp_msg::*;
+use crate::gtpv2_type::*;
 use crate::gtp_dictionary::{self, *};
 use crate::{find_pkt_in_queue, session, validate_gtpv2::*};
-use crate::gtpv2_type::*;
-use crate::gtp_msg::*;
-use std::io::Error;
-use crate::peers::*;
-use crate::session::*;
-use crate::ippool::*;
 
 const BUFSIZ: usize = 8192;
 
@@ -51,19 +45,11 @@ impl BearerQos {
     }
 }
 
-// const INSTANCE_FOR_S1U_ENB_FTEID: u8 =		0;
-// const INSTANCE_FOR_S4U_SGSN_FTEID: u8 =		1;
-// const INSTANCE_FOR_S5S8U_SGW_FTEID: u8 =	2;
-// const INSTANCE_FOR_S5S8U_PGW_FTEID: u8 =	3;
-// const INSTANCE_FOR_S12_RNC_FTEID: u8 =		4;
-// const INSTANCE_FOR_S2B_EPDG_FTEID: u8 =		5;
-// const INSTANCE_FOR_S2A_TWAN_FTEID: u8 =		6;
-// const INSTANCE_FOR_S11U_MME_FTEID: u8 =		7;
-
 #[derive(Debug, Clone, Copy)]
 pub struct BearerTFT {
-
+	//TODO
 }
+
 #[derive(Debug, Clone, Copy)]
 pub struct FTeid {
 	pub used: bool,
@@ -74,17 +60,17 @@ pub struct FTeid {
 impl FTeid {
 	fn new() -> Self {
 		FTeid {
-			used:	false,
-			iface_type: 0,
-			teid: 0,
-			addr: Ipv4Addr::new(0,0,0,0),
+			used:		false,
+			iface_type:	0,
+			teid:		0,
+			addr:		Ipv4Addr::new(0,0,0,0),
 		}
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct BearerCnxt {
-	pub ebi: u8,
+	pub ebi:		u8,
 	pub iface_info: [FTeid;8],
 	pub bearer_qos: BearerQos,
 }
@@ -92,7 +78,7 @@ pub struct BearerCnxt {
 impl BearerCnxt {
 	pub fn new() -> Self {
 		BearerCnxt {
-			ebi: 0,
+			ebi:		0,
 			iface_info: [FTeid::new();8],
 			bearer_qos: BearerQos::new(),
 		}
@@ -157,11 +143,11 @@ impl Gtpv2IeInfo {
 
 #[derive(Debug)]
 struct IeParseDetails { 
-    ie_min_length: u8,
-    ie_max_length: u8,
-    ie_presence: u8,
-    reserved: u8,
-    group_ie_info: Option<Box<Gtpv2GroupIeParseInfo>>,
+    ie_min_length:	u8,
+    ie_max_length:	u8,
+    ie_presence:	u8,
+    reserved:		u8,
+    group_ie_info:	Option<Box<Gtpv2GroupIeParseInfo>>,
 }
 
 #[derive(Debug)]
@@ -419,7 +405,6 @@ impl IeMessage {
     }
 
     fn add_ie(&mut self, id: u8, lv: LV) {
-        // self.tlvs.entry(id).or_insert_with(Vec::new).push(lv);
 		if let Some(vec) = self.tlvs.get_mut(&id) {
             // If a entry is exiest already, push lv to Vec.
             vec.push(lv);
@@ -463,7 +448,6 @@ pub fn get_ie_value(raw_data: &[u8])
                 lv.l = u16::from_be_bytes([raw_data[index + gpos + 1], raw_data[index + gpos + 2]]);
                 lv.i = raw_data[index + gpos + 3] & 0x0f;
                 len = lv.l as usize;
-                // lv.v.copy_from_slice(&raw_data[index + gpos + 4..index + gpos + 4 + len]);
                 lv.v.extend_from_slice(&raw_data[index + gpos + 4..index + gpos + 4 + len]);
 
 
@@ -548,34 +532,6 @@ async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32,
 		return Err("Fail to get IE EBI".to_string());
 	}
 
-    // trace!("GET F-TEID IE");
-    // let mut gtpc_interfaces: Vec<control_info> = vec![control_info::new()];
-    // let mut gtpu_interfaces: Vec<control_info> = vec![control_info::new()];
-
-    // if let Some(lv) = ies.get_ie(GTPV2C_IE_FTEID) {
-    //     for item in lv {
-    //         let mut info  = control_info::new();
-
-    //     	if let LVValue::Single(ref v) = item.v {
-    //         	info.interface_type = v[0] & 0x3f;
-    //         	info.teid = u32::from_be_bytes( v[1..5].try_into().expect("convert to teid problem") );
-    //         	info.addr = Ipv4Addr::new( v[5], v[6], v[7], v[8]);
-    //         	info!("Interface type: {}", info.interface_type);
-    //         	info!("Interface teid: {}", info.teid);
-    //         	info!("Interface addr: {}", info.addr);
-    //     	}
-    //     	else {return Err("Single value is error".to_string());}
-
-
-    //         if interface_type_map(info.interface_type) == GTPV2_CONTROL_INTERFACE {
-    //             gtpc_interfaces.push(info);
-    //         }
-    //         else if interface_type_map(info.interface_type) == GTPV2_USER_INTERFACE {
-    //             gtpu_interfaces.push(info);
-    //         }
-    //     }
-
-    // }
 	trace!("Get Bearer Context IE"); //Group IE
 	let mut bearers: Vec<BearerCnxt> = vec![BearerCnxt::new()];
 	if let Some(lv) = ies.get_ie(GTPV2C_IE_BEARER_CONTEXT) {
