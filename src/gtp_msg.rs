@@ -252,7 +252,7 @@ gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
     trace!("Thread Spwan 'make gtpv2' function");
     tokio::spawn(
         make_gtpv2( buffer, GTPV2C_CREATE_SESSION_RSP,
-            peer, true, total_len as u8, false)
+            peer.ip.clone(), true, total_len as u8, false)
     );
 
     Ok(())
@@ -289,7 +289,7 @@ gtp_send_create_session_response (peer:Peer, session:Arc<Mutex<Session>>, pdn_in
     trace!("Thread Spwan 'make gtpv2' function");
     tokio::spawn(
         make_gtpv2( buffer, GTPV2C_CREATE_SESSION_RSP,
-            peer, true, total_len as u8, false)
+            peer.ip.clone(), true, total_len as u8, false)
     );
 
     Ok(())
@@ -348,7 +348,7 @@ pub fn gtp_send_delete_session_request (peer:Peer,
 
 
 pub async fn
-gtp_send_echo_request (peer:Peer)
+gtp_send_echo_request (peer:&mut Peer)
 -> Result<(), String>
 {
     let mut buffer:[u8;1024] = [0u8;1024];
@@ -357,7 +357,7 @@ gtp_send_echo_request (peer:Peer)
 
     tokio::spawn(
         make_gtpv2( buffer, GTPV2C_ECHO_REQ,
-            peer, false, total_len as u8, true)
+            peer.ip.clone(), false, total_len as u8, true)
     );
 
     Ok(())
@@ -373,7 +373,7 @@ gtp_send_echo_response (peer:Peer, restart_count: u8)
 
     tokio::spawn(
         make_gtpv2( buffer, GTPV2C_ECHO_REQ,
-            peer, false, total_len as u8, false)
+            peer.ip.clone(), false, total_len as u8, false)
     );
 
     Ok(())

@@ -14,15 +14,11 @@ mod session;
 mod dump;
 
 use std::fs;
-use std::thread;
 use std::io::Error;
-use std::sync::{Arc, Mutex};
 use std::net::AddrParseError;
 use core::result::Result;
 use thiserror::Error;
-use tokio::sync::RwLock;
 use chrono::Local;
-use fern::Dispatch;
 use std::path::Path;
 use std::{fs::File, fs::metadata,io::Write};
 use log::{debug, error, info, trace, warn};
@@ -32,7 +28,6 @@ use crate::config::*;
 use crate::udpsock::*;
 use crate::gtpv2_recv::*;
 use crate::gtp_dictionary::*;
-// use crate::session::*;
 use crate::ippool::*;
 use crate::pkt_manage::*;
 
@@ -61,6 +56,7 @@ fn check_and_roll_log(log_filename: &str) -> std::io::Result<File> {
     
     File::create(log_filename)
 }
+
 
 async fn setup_logger() -> Result<(), fern::InitError> {
 
@@ -110,57 +106,41 @@ async fn main() -> Result<(), Error>
     }
 
     //Set up logger
-    setup_logger().await;
+    if let Err(ret) = setup_logger().await {
+        println!("Failed to set up logger: {:?}", ret);
+        return Err(Error::new(std::io::ErrorKind::Other, "Failed to set up logger"));
+    }
 
-    load_gtp_dictionary("src/config/GTPv2_Dictionary.json").await ;
+    if let Err(ret) = load_gtp_dictionary("src/config/GTPv2_Dictionary.json").await {
+        println!("Failed to load GTPv2 Dictionary: {:?}", ret);
+        return Err(Error::new(std::io::ErrorKind::Other, "Failed to load GTPv2 Dictionary"));
+    }
 
     //Create Peer structure based on config_peer file
-    let ret = create_peer().await;
+    create_peer().await;
 
     //IP pool
-    let ret = prepare_ip_pool().await;
+    prepare_ip_pool().await;
+
+    info!("Peer Manage");
+    let peer_handle = tokio::spawn(async move { peer_manage().await; });
+
+    // let mut queue_clone = SHARED_QUEUE.clone();
+    info!("Queue Manage");
+    let queue_handle = tokio::spawn(async move { check_timer().await; });
 
 
-    // let msg_queue = MsgQue::new();
-
-    // peer_manage().await;
-    // let peer_handle = tokio::spawn(async move {
-        info!("Peer Manage");
-        peer_manage().await;
-    // });
-
-    {
-        // let mut queue_clone = SHARED_QUEUE.clone();
-        let queue_handle = tokio::spawn(async move {
-            info!("Queue Manage");
-            // SHARED_QUEUE.lock().await.check_timer().await;
-            check_timer().await;
-            // queue_clone.que_print();
-        });
-        // drop(queue_clone)
-    }
-    // let recv_handle;
     let config = CONFIG_MAP.read().await;
-    let src_port = config.get("SrcPort").clone();
-    drop(config);
-
-    if let Some(src_port) = src_port {
-        // let src_port = src_port.to_string();
+    if let Some(src_port) = config.get("SrcPort").clone() {
         if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", src_port)) {
-
             info!("Socket Successfully Created!: {:?}", recv_socket);
-            // thread::spawn(move || gtpv2_recv_task(recv_socket, session_list, teid_list) );
-                // gtpv2_recv_task(&recv_socket, session_list.clone(), teid_list.clone()).await;
-            // recv_handle = tokio::spawn(async move {
             gtpv2_recv_task(recv_socket).await;
-            // });
-            // dummy(recv_socket);
         }
         else {
             eprintln!("Failed to create socket for address 0.0.0.0:{}", src_port);
-        }
+        };
     }
-    // let _ = tokio::try_join!( peer_handle, queue_handle);
 
+    drop(config);
     Ok(())
 }

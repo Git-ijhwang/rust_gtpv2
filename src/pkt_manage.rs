@@ -9,7 +9,7 @@ use crate::gtpv2_type::*;
 use crate::peers::*;
 
 
-static ECHO_TIMEOUT: Duration = Duration::from_secs(3);
+static ECHO_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct EncapPkt {
     pub peer_index: Ipv4Addr,
     pub msg_type:   u8,
@@ -113,20 +113,8 @@ impl MsgQue  {
             println!("{:?}", x.data);
         }
     }
-     // check_timer를 비동기 태스크로 실행하는 함수
-    //  pub fn start_timer_task(&mut self) {
-     pub fn start_timer_task( self) {
-        let queue = Arc::new(Mutex::new(self)); // queue를 Arc로 감싸서 공유 가능하게 만듦
-
-        // 새로운 비동기 태스크로 check_timer 실행
-        tokio::spawn(async move {
-            // let mut queue_locked = queue.lock().await;
-            // self.check_timer().await; // 비동기적으로 실행
-            check_timer().await;
-        });
-    }
-
 }
+
 
 pub async fn find_pkt_in_queue(peer_index: Ipv4Addr, rcv_seq: u32) {
     let mut queue = SHARED_QUEUE.lock().await;
@@ -139,7 +127,6 @@ pub async fn find_pkt_in_queue(peer_index: Ipv4Addr, rcv_seq: u32) {
             error!("Can't find Packet in Queue");
         }
     }
-    
 }
 
 pub async fn check_timer () {
@@ -150,50 +137,49 @@ pub async fn check_timer () {
         let mut expired = vec![];
         let now = tokio::time::Instant::now();
 
-        {
-            let mut queue = SHARED_QUEUE.lock().await;
+		let mut queue = SHARED_QUEUE.lock().await;
+		queue.queue.retain_mut(|x| {
 
-            queue.queue.retain_mut(|x| {
-                info!("Something is here");
+			if now.duration_since(x.send_time) > x.expiry {
 
-                if now.duration_since(x.send_time) > x.expiry {
+				if x.send_count <= 3 {
+					x.send_time = tokio::time::Instant::now();
+					x.send_count += 1;
 
-                    if x.send_count <= 3 {
-                        println!("Resent Count : {}", x.send_count);
-                        println!("Len: {}", x.data.len());
-                        println!("{:#?}", x.data);
-                        // 메시지 재전송
-                        x.send_time = tokio::time::Instant::now();
-                        x.send_count += 1;
+					if x.msg_type == GTPV2C_ECHO_REQ {
+						x.expiry = ECHO_TIMEOUT;
+					}
+					if x.msg_type == GTPV2C_CREATE_SESSION_REQ {
+						x.expiry = ECHO_TIMEOUT;
+					}
+					info!("Msg type: {}", x.msg_type);
 
-                        if x.msg_type == GTPV2C_ECHO_REQ {
-                            x.expiry = ECHO_TIMEOUT;
-                        }
-                        if x.msg_type == GTPV2C_CREATE_SESSION_REQ {
-                            x.expiry = ECHO_TIMEOUT;
-                        }
-                        info!("Msg type: {}", x.msg_type);
+					true // Keep the item
+				} else {
+					expired.push(x.clone());
+					error!("Expire!!!");
+					false // Remove from Queue
+				}
+			} else {
+				true // Keep the item
+			}
+		});
+		drop(queue);
 
-                        true // 항목 유지
-                    } else {
-                        expired.push(x.clone()); // 만료된 항목 기록
-                        error!("Expire!!!");
-                        false // 큐에서 제거
-                    }
-                } else {
-                    true // 항목 유지
-                }
-            });
-        }
-
+        let mut list = GTP2_PEER.lock().await;//unwrap();
         for item in &mut expired {
-            let mut peer = get_peer(&item.peer_index).unwrap();
-            let buf = format!("Before: {}", peer.get_peer_status());
-            peer.deactivate_peer_status();
+            
+            let key = u32::from(item.peer_index);//.into();
+            if let Some(peer) = list.get_mut(&key) {
+                    peer.deactivate_peer_status();
+            }
+            else {
+                error!("Fail to get peer for {}", item.peer_index);
+            }
 
-            info!("{} After: {}",buf, peer.get_peer_status());
             SHARED_QUEUE.lock().await.rm_peer(item.peer_index);
         }
+		drop(list);
 
         expired.clear();
     }

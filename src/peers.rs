@@ -1,4 +1,6 @@
-use std::sync::Mutex;
+use std::sync::Arc ;
+use tokio::sync::Mutex;
+// use std::sync::Mutex;
 use std::str::FromStr;
 use std::net::Ipv4Addr;
 use std::time::Instant;
@@ -6,32 +8,33 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use tokio::time::{self, Duration};
 use log::{debug, error, info, trace, warn};
-use crate::gtp_msg::gtp_send_echo_request;
-use crate::gtpv2_type::*;
+
 use crate::config::*;
+// use crate::gtpv2_type::*;
+use crate::gtp_msg::gtp_send_echo_request;
+
 extern crate lazy_static;
 
-
 lazy_static! {
-    pub static ref GTP2_PEER: Mutex<HashMap<u32, Peer>> = Mutex::new(HashMap::new());
+    pub static ref GTP2_PEER: Arc<Mutex<HashMap<u32, Peer>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct Peer {
-    pub ip:             Ipv4Addr,
-    pub port:           u16,    // peer port 
-    pub node_type:          String,
+    pub ip:					Ipv4Addr,
+    pub port:				u16,    // peer port 
+    pub node_type:			String,
     // pub msglen:             u16,    // msg length 
     // pub version:            u8,     // gtp version 
-    pub status:             bool,     // gtp version 
-    pub resend_count:       u8,
+    pub status:				bool,     // gtp version 
+    pub resend_count:		u8,
 
-    pub teid:               u32,    // Recieved Sequence number
-    pub rseq:               u32,    // Recieved Sequence number
-    pub tseq:               u32,    // Transmit Sequence number 
+    pub teid:				u32,    // Recieved Sequence number
+    pub rseq:				u32,    // Recieved Sequence number
+    pub tseq:				u32,    // Transmit Sequence number 
 
-    pub last_active_time:   Instant,   // 마지막 활동 시간
+    pub last_active_time:	Instant,   // 마지막 활동 시간
     pub last_echo_snd_time: Instant,   // 마지막  시간
     // pub tx_count:           u32,              // 전송된 메시지 수
     // pub rx_count:           u32,              // 수신된 메시지 수
@@ -41,25 +44,25 @@ pub struct Peer {
 
 impl Peer {
 
-    pub fn new(ip: Ipv4Addr, port: u16, node_type: String) -> Self {
-        Peer {
-            ip,
-            port,
-            node_type,
-            // msglen:     0,
-            // version:    GTP_VERSION,
-            status:     false,
-            teid:       0,
-            rseq:       0,
-            tseq:       0,
-            resend_count: 0,
-            last_active_time: Instant::now(),
-            last_echo_snd_time: Instant::now(),
-            // tx_count:   0,
-            // rx_count:   0,
-            // error_count:    0,
-        }
-    }
+	pub fn new(ip: Ipv4Addr, port: u16, node_type: String) -> Self {
+		Peer {
+			ip,
+			port,
+			node_type,
+			// msglen:     0,
+			// version:    GTP_VERSION,
+			status:				true,
+			teid:				0,
+			rseq:				0,
+			tseq:				0,
+			resend_count:		0,
+			last_active_time:	Instant::now(),
+			last_echo_snd_time: Instant::now(),
+			// tx_count:   0,
+			// rx_count:   0,
+			// error_count:    0,
+		}
+	}
 
     pub fn update_last_echo_snd_time(&mut self) {
         self.last_echo_snd_time = Instant::now();
@@ -69,30 +72,30 @@ impl Peer {
         self.last_active_time = Instant::now();
     }
 
-    pub fn check_peer(ip: Ipv4Addr) -> Result<Self,()> {
-        let list = GTP2_PEER.lock().unwrap();
-        let key = u32::from(ip).into();
+    pub async fn check_peer(ip: Ipv4Addr) -> Result<Self,()> {
+        let list = GTP2_PEER.lock().await;
+        let key = u32::from(ip);//.into();
 
-        if let Some(peer) = list.get(&key) {
-            Ok( peer.clone())
-        }
-        else {
-            return  Err(());
-        }
-    }
+		if let Some(peer) = list.get(&key) {
+			return Ok(peer.clone());
+		}
 
-    pub fn put_peer(peer: Peer) {
-        let mut list = GTP2_PEER.lock().unwrap();
+        drop(list);
+		return  Err(());
+	}
+
+    pub async fn put_peer(peer: Peer) {
+        let mut list = GTP2_PEER.lock().await;//.unwrap();
         if let Some(key) = u32::from(peer.ip).into() {
             list.insert(key, peer);
         }
+        drop(list);
     }
 
     pub fn change_peer_status(&mut self) -> bool {
         self.status = !self.status;
         self.status
     }
-
 
     pub fn get_peer_status(& self) -> bool {
         self.status
@@ -128,9 +131,10 @@ impl Peer {
         self.resend_count = 0;
     }
 
-    pub fn print() {
-        let list = GTP2_PEER.lock().unwrap();
+    pub async fn print() {
+        let list = GTP2_PEER.lock().await;//unwrap();
         info!("{:#?}", list);
+        drop(list);
     }
 }
 
@@ -151,7 +155,8 @@ pub async fn create_peer () {
         let port = u16::from_str(parts[1]).unwrap();
 
         let conf = CONFIG_MAP.read();
-        let mut peerlist = GTP2_PEER.lock().unwrap();
+
+
         let mut peer = Peer::new(ip, port, key.to_string());
         let addr = conf.await.get("Addr").unwrap();
         if let Ok(ip) = Ipv4Addr::from_str(&addr) {
@@ -161,44 +166,48 @@ pub async fn create_peer () {
             peer.tseq = 1;
         }
 
-        // peer.tseq = u32::from( Ipv4Addr::from_str( &conf.get("Addr").unwrap())?).into();
-        // peer.tseq = tseq;
+        let mut peerlist = GTP2_PEER.lock().await;//unwrap();
         peerlist.insert(u32::from(peer.ip), peer);
+        drop(peerlist);
     }
 }
 
 
-pub fn get_peer(ip: &Ipv4Addr) -> Result<Peer, ()> {
-    let list = GTP2_PEER.lock().unwrap();
-    let key = u32::from(*ip).into();
+// pub async fn get_peer(ip: Ipv4Addr) -> Result<&mut Peer, ()> {
+//     let mut list = GTP2_PEER.lock().await;//unwrap();
+//     let key = u32::from(ip);//.into();
 
-    if let Some(peer) = list.get(&key) {
-        info!("Success get peer for {}", *ip);
-        Ok( peer.clone())
-    }
-    else {
-        error!("Fail get peer for {}", *ip);
-        Err(())
-    }
-}
+//     if let Some(peer) = list.get_mut(&key) {
+//         info!("Success get peer for {}", ip);
+//         Ok(peer)
+//     }
+//     else {
+//         error!("Fail get peer for {}", ip);
+//         Err(())
+//     }
+// }
 
 
 pub async fn peer_manage()
 {
-    // let config = CONFIG_MAP.read().unwrap().await;
-    let config = CONFIG_MAP.read().await;
+	let config = CONFIG_MAP.read().await;
 
-    let timeout     = config.get("GTPv2_MSG_TIMEOUT").unwrap().parse::<u8>().unwrap() ;
-    let rexmit_cnt  = config.get("GTPv2_RETRANSMIT_COUNT").unwrap().parse::<u8>().unwrap() ;
-    let echo_period = config.get("ECHO_PERIOD").unwrap().parse::<u64>().unwrap() ;
+	let timeout			= config.get("GTPv2_MSG_TIMEOUT").unwrap().parse::<u8>().unwrap() ;
+	let rexmit_cnt		= config.get("GTPv2_RETRANSMIT_COUNT").unwrap().parse::<u8>().unwrap() ;
+	let echo_period	= config.get("ECHO_PERIOD").unwrap().parse::<u64>().unwrap() ;
 
-    loop {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let mut buffer:[u8;1024] = [0u8;1024];
-        let mut peers = GTP2_PEER.lock().unwrap();
+	loop {
+		tokio::time::sleep(Duration::from_millis(100)).await;
 
-        for (key, peer) in peers.iter_mut() {
-            if Instant::now() >= peer.last_echo_snd_time+Duration::from_secs(echo_period) {
+		let mut peers = GTP2_PEER.lock().await;//unwrap();
+
+		for (key, peer) in peers.iter_mut() {
+
+            if peer.get_peer_status() == false {
+                continue;
+            }
+
+            if Instant::now() >= peer.last_echo_snd_time + Duration::from_secs(timeout as u64) {
 
                 if peer.get_count() <= rexmit_cnt {
                     if peer.status == false {
@@ -206,12 +215,11 @@ pub async fn peer_manage()
                         peer.activate_peer_status();
                         peer.update_last_active();
                     }
-                    match gtp_send_echo_request(peer.clone()).await {
-                        Ok(_) => { },  
-                        _ => {
-                            error!("Fail to send Echo Request");
-                        }
-                    }
+
+					if let Err(_) = gtp_send_echo_request(peer).await {
+						error!("Fail to send Echo Request");
+					}
+                    // peer.increase_count();
                 }
                 else {
                     peer.deactivate_peer_status();
@@ -221,6 +229,6 @@ pub async fn peer_manage()
                 continue;
             }
         }
-        // break;
+        drop(peers);
     }
 }

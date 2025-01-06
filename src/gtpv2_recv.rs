@@ -456,14 +456,16 @@ pub fn get_ie_value(raw_data: &[u8])
 
             index += 4;
 
-            while gpos <= glen as usize {
+            while gpos < glen as usize {
 
                 let mut lv = TLV::new();
                 lv.t = raw_data[index + gpos + 0];
                 lv.l = u16::from_be_bytes([raw_data[index + gpos + 1], raw_data[index + gpos + 2]]);
                 lv.i = raw_data[index + gpos + 3] & 0x0f;
                 len = lv.l as usize;
-                lv.v.copy_from_slice(&raw_data[index + gpos + 4..index + gpos + 4 + len]);
+                // lv.v.copy_from_slice(&raw_data[index + gpos + 4..index + gpos + 4 + len]);
+                lv.v.extend_from_slice(&raw_data[index + gpos + 4..index + gpos + 4 + len]);
+
 
                 gpos += (4 + len);
                 if let LVValue::Nested(ref mut nested_vec) = glv.v { nested_vec.push(lv);}
@@ -471,6 +473,7 @@ pub fn get_ie_value(raw_data: &[u8])
             }
 
             table.add_ie( t, glv);
+            index += gpos;
             continue;
         }
 
@@ -481,6 +484,9 @@ pub fn get_ie_value(raw_data: &[u8])
         len = lv.l as usize;
 
         if let LVValue::Single(ref mut sigle_vec) = lv.v {
+            if sigle_vec.len() != len {
+                sigle_vec.resize(len, 0); // 길이가 len이 되도록 확장하고, 빈 공간은 0으로 채움
+            }
             sigle_vec.copy_from_slice(&raw_data[index + 4..index + 4 + len]);
         }
 
@@ -502,11 +508,7 @@ async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32,
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
     trace!("GET EBI IE");
-    // if let Some(lv ) = ies.get_ie(GTPV2C_IE_EBI) {
 
-    //     if let LVValue::Single(ref v) = lv[0].v { ebi = v[0];}
-    //     else {return Err("Single value is error".to_string());}
-    // }
 	if let Result::Ok(ret) = get_single_value(ies, GTPV2C_IE_EBI) {
 		ebi = ret[0];
 	}
@@ -539,10 +541,6 @@ async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32,
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
     trace!("GET EBI IE");
-    // if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
-    //     if let LVValue::Single(ref v) = lv[0].v { ebi = v[0];}
-    //     else {return Err("Single value is error".to_string());}
-    // }
 	if let Result::Ok(ret) = get_single_value(ies.clone(), GTPV2C_IE_EBI) {
 		ebi = ret[0];
 	}
@@ -641,7 +639,7 @@ async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32,
 				modify_bearer(&mut bearer, bearer_info);
 			}
 		}
-		// if 
+		// if this node is SGW, allocate TEID for S5S8U
     }
     // gtp_send_modify_bearer_response ();
     Ok(())
@@ -924,6 +922,7 @@ async fn recv_echo_req( peer: & mut Peer, ies: IeMessage)
     Ok(())
 }
 
+
 async fn recv_echo_rsp( peer: & mut Peer, ies: IeMessage)
 -> Result < (), String>
 {
@@ -1004,16 +1003,19 @@ pub async fn gtpv2_recv_task(socket: UdpSocket) {
                     let sin_addr = &Ipv4Addr::new(10,10,2,72);
                     trace!("sin_addr info {:?}", sin_addr);
 
-                    match get_peer(sin_addr) {
-                        Err(_) => {
-                            warn!("This is not registered PEER!");
-                        } 
+                    let mut list = GTP2_PEER.lock().await;//unwrap();
+                    let key = u32::from(*sin_addr);//.into();
 
-                        Ok(mut peer) => {
-                            info!("Success get peer {}", peer.ip);
-                            _ = recv_gtpv2(&buf[..nbyte], &mut peer, &teid_list, &sess_list ).await;
-                        }
+                    if let Some(peer) = list.get_mut(&key) {
+                        println!("Peer status: {}", peer.status);
+                        println!("Activate!!!!");
+                        peer.activate_peer_status();
+                        println!("Peer status: {}", peer.status);
+                        _ = recv_gtpv2(&buf[..nbyte], peer, &teid_list, &sess_list ).await;
                     }
+                    drop(list);
+                }
+                else {
                 }
             }
 
@@ -1040,7 +1042,7 @@ pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
     let mut rcv_seq = 0;
 
     trace!("Processed GTPv2 data.");
-    let ret = parse_header(_data.clone());
+    let ret = parse_header(_data);
     match ret {
         Ok( (v, n)) => {
             rcv_msg_type = v.t;
@@ -1072,20 +1074,20 @@ pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
         },
     }
 
-
     let ies = check_ie_length(&_data[hdr_len..], &msg_define);
     if let Err(ret) = validate_length(&ies, &msg_define) {
         error!("Validation Check false: [{}]", ret);
     }
 
-    trace!("get IE value");
+    trace!("GET IE value");
     let ies = get_ie_value(&_data[hdr_len..]);
 
-    trace!("PEER");
+    trace!("Update PEER");
     peer.update_rseq(rcv_seq);
 
-    trace!("Send to Next peer");
+    trace!("Process the packet as a PGW");
     pgw_recv( peer, ies, rcv_msg_type, teid, rcv_seq, teid_list, sess_list).await;
+
 
     Ok(())
 }
