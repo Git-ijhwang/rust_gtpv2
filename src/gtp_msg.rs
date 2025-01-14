@@ -238,10 +238,11 @@ pub fn gtpv2_get_ie_mbr(data: &[u8], up: &mut u32, down: &mut u32)
 
 
 pub async fn
-gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
+gtp_send_delete_session_response (session:Arc<Mutex<Session>>)
 -> Result<(), String>
 {
     let mut buffer:[u8;1024] = [0u8;1024];
+    // let locked_session = session.lock().unwrap();
 
     trace!("Start Delete Session Response ");
     // let session = find_session_by_imsi(imsi.clone());
@@ -249,22 +250,25 @@ gtp_send_delete_session_response (peer:Peer, imsi:&String, pdn_index: usize)
     //IE CAUSE
     let total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
 
-    trace!("Thread Spwan 'make gtpv2' function");
-    tokio::spawn(
-        make_gtpv2( buffer, GTPV2C_CREATE_SESSION_RSP,
-            peer.ip.clone(), true, total_len as u8, false)
-    );
+    let buf;
+    match build_gtpv2_message(&buffer, GTPV2C_DELETE_SESSION_RSP,
+        session.clone(), true, total_len as u8).await {
+        Ok(v) => buf = v,
+        Err(_) => return Err("Fail to make header".to_string()),
+    }
+
+    send_gtpv2_message(&buf, GTPV2C_DELETE_SESSION_RSP, session.clone(), false).await;
 
     Ok(())
 }
 
 
-pub async fn
-gtp_send_create_session_response (peer:Peer, session:Arc<Mutex<Session>>, pdn_index: usize)
+pub async
+fn gtp_send_create_session_response (session:Arc<Mutex<Session>>)
 -> Result<(), String>
 {
     let mut buffer:[u8;1024] = [0u8;1024];
-    let session = session.lock().unwrap();
+    let locked_session = session.lock().unwrap();
 
     trace!("Start Create Session Response ");
 
@@ -274,47 +278,71 @@ gtp_send_create_session_response (peer:Peer, session:Arc<Mutex<Session>>, pdn_in
     //IE F-TEID
 
     //IE PAA
-    let ip = session.pdn[pdn_index-1].ip;
-    total_len = gtpv2_add_ie_paa(&mut buffer, 0, PDN_TYPE_IPV4, ip );
+    let ip = locked_session.pdn[ locked_session.pdn.len()-1 ].ip;
+    total_len += gtpv2_add_ie_paa(&mut buffer, 0, PDN_TYPE_IPV4, ip );
     //IE PAN Restriction
     //IE AMBR
 
     //IE EBI
-    let ebi = session.pdn[pdn_index-1].lbi;
+    let ebi = locked_session.pdn[ locked_session.pdn.len()-1 ].lbi;
     total_len = gtpv2_add_ie_tv1( &mut buffer, GTPV2C_IE_EBI, 0, ebi, total_len);
 
     //IE BEARER Context
     //IE Recovery
 
-    trace!("Thread Spwan 'make gtpv2' function");
-    tokio::spawn(
-        make_gtpv2( buffer, GTPV2C_CREATE_SESSION_RSP,
-            peer.ip.clone(), true, total_len as u8, false)
-    );
+    let buf;
+    match build_gtpv2_message(&buffer, GTPV2C_CREATE_SESSION_RSP,
+        session.clone(), true, total_len as u8).await {
+        Ok(v) => buf = v,
+        Err(_) => return Err("Fail to make header".to_string()),
+    }
+
+    send_gtpv2_message(&buf, GTPV2C_CREATE_SESSION_RSP, session.clone(), false).await;
 
     Ok(())
 }
 
 
-pub fn gtp_send_modify_bearer_response (peer:Peer, session:Arc<Mutex<Session>>, pdn_index: usize)
+pub async fn gtp_send_modify_bearer_response (
+    session:Arc<Mutex<Session>>, lbi: u8)
 -> Result<(), String>
 {
-    let session = session.lock().unwrap();
-
+    let locked_session = session.lock().unwrap();
     let mut buffer:[u8;1024] = [0u8;1024];
 
-
     //IE Cause
+    let mut total_len = gtpv2_add_ie_cause( &mut buffer, 0, 16, 0, None, 0);
+
     //IE MSISDN
+    let msisdn_value: &[u8] = locked_session.msisdn.as_bytes();
+    total_len += gtpv2_add_ie_tbcd(&mut buffer, GTPV2C_IE_MSISDN, 0, msisdn_value);
+
     //IE LBI
+    total_len = gtpv2_add_ie_tv1( &mut buffer, GTPV2C_IE_EBI, 0, lbi, total_len);
+
     //IE APN Restriction
     //IE PCO
     //IE Bearer Contexts modified
     //IE Change Report Action
     //IE Recovery
 
+    let mut peers = GTP2_PEER.lock().await;//unwrap();
+    let peer = if let Some(value) = peers.get_mut(&u32::from(locked_session.peer_ip)) {
+        value
+    }
+    else {
+        return Err(("Fail to get peer").to_string());
+    };
+
     //Make GTPv2 Header
-    // make_gtpv2(GTPV2C_MODIFY_BEARER_RSP, &buffer, peer, true, total_len as u8);
+    let buf;
+    match build_gtpv2_message(&buffer, GTPV2C_MODIFY_BEARER_RSP,
+        session.clone(), true, total_len as u8 ).await {
+        Ok(v) => buf = v,
+        Err(_) => return Err("Fail to make header".to_string()),
+    }
+
+    send_gtpv2_message(&buf, GTPV2C_MODIFY_BEARER_RSP, session.clone(), false).await;
 
 
     Ok(())
@@ -355,26 +383,31 @@ gtp_send_echo_request (peer:&mut Peer)
     // create_ie(&mut buffer, GTPV2C_IE_RECOVERY, 0);
     let total_len = gtpv2_add_ie_tv1(&mut buffer, GTPV2C_IE_RECOVERY, 0, 0, 1);
 
-    tokio::spawn(
-        make_gtpv2( buffer, GTPV2C_ECHO_REQ,
-            peer.ip.clone(), false, total_len as u8, true)
-    );
+    let buf;
+    match build_gtpv2_message_without_session( &buffer, GTPV2C_ECHO_REQ, peer.tseq, total_len as u8).await {
+        Ok(v) => buf = v,
+        Err(_) => return Err("Fail to make header".to_string()),
+    }
+    send_gtpv2_message_without_session( &buf, GTPV2C_ECHO_REQ, peer, false).await;
 
     Ok(())
 }
 
 pub async fn
-gtp_send_echo_response (peer:Peer, restart_count: u8)
+gtp_send_echo_response (peer: &mut Peer, restart_count: u8)
 -> Result<(), String>
 {
     let mut buffer:[u8;1024] = [0u8;1024];
     // create_ie(&mut buffer, GTPV2C_IE_RECOVERY, 0);
     let total_len = gtpv2_add_ie_tv1(&mut buffer, GTPV2C_IE_RECOVERY, 0, restart_count, 1);
 
-    tokio::spawn(
-        make_gtpv2( buffer, GTPV2C_ECHO_REQ,
-            peer.ip.clone(), false, total_len as u8, false)
-    );
+    let buf;
+    match build_gtpv2_message_without_session(&buffer, GTPV2C_ECHO_RSP,
+        peer.tseq, total_len as u8).await {
+        Ok(v) => buf = v,
+        Err(_) => return Err("Fail to make header".to_string()),
+    }
 
+    send_gtpv2_message_without_session(&buf, GTPV2C_ECHO_RSP, peer, false).await;
     Ok(())
 }

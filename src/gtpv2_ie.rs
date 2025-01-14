@@ -46,8 +46,8 @@ fn _enc_tbcd(input: &[u8], length: usize, output: &mut [u8])
     if length % 2 == 1 {
         // Odd length
         for i in (0..length - 1).step_by(2) {
-            output[c] = bcd_encode(input[i + 1], input[i]);
-            c += 1;
+			output[c] = bcd_encode(input[i + 1], input[i]);
+			c += 1;
         }
         output[c] = bcd_encode(0xFF, input[length - 1]);
         c += 1;
@@ -182,7 +182,7 @@ pub fn gtpv2_add_ie_tlv( msg:&mut[u8;1024], ie_type: u8,
     pos += 2;
 
     //CR flag and Instance: 1byte
-    msg[pos ] = instance & 0x00ff;
+    msg[pos] = instance & 0x00ff;
     pos += 1;
 
     //IE Value: n bytes
@@ -191,6 +191,7 @@ pub fn gtpv2_add_ie_tlv( msg:&mut[u8;1024], ie_type: u8,
 
     pos
 }
+
 
 pub fn gtpv2_add_ie_cause( msg: &mut [u8;1024],
     instance: u8, cause: u8, flags: u8,
@@ -204,6 +205,7 @@ pub fn gtpv2_add_ie_cause( msg: &mut [u8;1024],
 
     if let Some(ie_type_value) = ie_type {
         buf[p] = ie_type_value; p += 1;
+
         // Reserved byte
         buf[p] = 0; p += 1;
         // Reserved byte

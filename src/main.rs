@@ -134,7 +134,7 @@ async fn main() -> Result<(), Error>
     if let Some(src_port) = config.get("SrcPort").clone() {
         if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", src_port)) {
             info!("Socket Successfully Created!: {:?}", recv_socket);
-            gtpv2_recv_task(recv_socket).await;
+            recv_task(recv_socket).await;
         }
         else {
             eprintln!("Failed to create socket for address 0.0.0.0:{}", src_port);

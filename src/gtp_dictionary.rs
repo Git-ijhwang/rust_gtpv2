@@ -19,12 +19,30 @@ pub struct IeInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IeError {
+    pub ie_cause:    u8,
+    pub ie_type:    u8,
+    pub instance:   u8,
+}
+
+impl IeError {
+    fn new() -> Self {
+        IeError {
+            ie_cause: 0,
+            ie_type: 0,
+            instance: 0,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GtpMessage {
     pub msg_type:   u8,
     pub msg_name:   String,
     pub response:   Vec<u32>,
     pub ie_counts:  usize,
     pub ie_list:    Vec<IeInfo>,
+    pub error:      IeError,
 }
 
 
@@ -38,6 +56,7 @@ impl GtpMessage {
             response:   Vec::new(),
             ie_counts:  0,
             ie_list:    Vec::new(),
+            error:      IeError::new(),
         }
     }
 }

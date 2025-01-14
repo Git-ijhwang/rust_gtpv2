@@ -173,3 +173,64 @@ get_teid_from_header (data: &[u8])  -> u32
 
     return teid;
 }
+
+fn extract_nested_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize) > {
+    let mut ies = Vec::new();
+    let mut index = 0;
+
+    while index + 4 <= raw_data.len() {
+        let ie_type = raw_data[index];
+        let ie_length = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]) as usize;
+
+        if index + 4 + ie_length > raw_data.len() {
+            break;
+        }
+
+        ies.push((ie_type, ie_length ));
+        index += 4 + ie_length;
+    }
+
+    ies
+}
+
+fn is_group_ie(ie_type: u8, dictionary: &GtpMessage) -> bool {
+    dictionary.ie_list
+        .iter()
+        .find(|info| info.ie_type == ie_type )
+        .map_or(false, |info| info.group_ie_info.is_some())
+}
+
+pub fn check_ie_length(raw_data: &[u8], dictionary: &mut GtpMessage)
+    -> Vec<(u8, usize, Vec<(u8, usize)>) > {
+    let mut ies = Vec::new();
+    let mut index = 0;
+
+    while index + 4 <= raw_data.len() {
+        let ie_type = raw_data[index];
+        let ie_length = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]) as usize;
+        let ie_instance =  raw_data[index + 3] & 0x0f;
+
+        if ie_type > GTPV2C_IE_TYPE_MAX || ie_instance > GTPV2C_CAUSE_MAX {
+            dictionary.error.ie_cause = GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT;
+            dictionary.error.ie_type = 0;
+            dictionary.error.instance = 0;
+        }
+
+        if index + 4 + ie_length > raw_data.len() {
+            break;
+        }
+
+        let ie_value = &raw_data[index+4..index+4+ie_length];
+        let nested_ies = if is_group_ie(ie_type, &dictionary) {
+            extract_nested_ies(ie_value, &dictionary)
+        }
+        else {
+            Vec::new()
+        };
+
+        ies.push((ie_type, ie_length, nested_ies));
+        index += 4 + ie_length;
+    }
+
+    ies
+}

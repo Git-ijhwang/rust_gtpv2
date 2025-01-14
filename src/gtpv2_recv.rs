@@ -180,6 +180,7 @@ struct Gtpv2IeParseInfo { //gtpv2_ie_parse_info_t
 const GTPV2_CONTROL_INTERFACE: u8 = 0;
 const GTPV2_USER_INTERFACE: u8 = 1;
 
+
 pub fn interface_type_map(interface_type: u8) -> u8 {
     match interface_type {
         0..=5 | 15 | 16 | 19..=23 | 29 | 31 | 33 | 34 | 37..=39 | 41 => { GTPV2_CONTROL_INTERFACE } //GTP-C
@@ -190,40 +191,6 @@ pub fn interface_type_map(interface_type: u8) -> u8 {
         }
     }
 }
-
-
-fn encode_tbcd(input: &[u8]) -> Result<Vec<u8>, String> {
-    let n = input.len();
-    if n < 2 || n > 32 {
-        return Err("Input length must be between 2 and 32".to_string());
-    }
-
-    let mut encoded = Vec::new();
-    let mut i = 0;
-
-    if n % 2 != 0 {
-        // Odd length
-        while i < n - 1 {
-            let high = input[i + 1] & 0x0F;
-            let low = input[i] & 0x0F;
-            encoded.push((high << 4) | low);
-            i += 2;
-        }
-        let last = input[n - 1] & 0x0F;
-        encoded.push((0xF0) | last);
-    } else {
-        // Even length
-        while i < n {
-            let high = input[i + 1] & 0x0F;
-            let low = input[i] & 0x0F;
-            encoded.push((high << 4) | low);
-            i += 2;
-        }
-    }
-
-    Ok(encoded)
-}
-
 
 
 fn decode_tbcd(input: &[u8]) -> Result<Vec<u8>, String> {
@@ -257,14 +224,6 @@ fn send_gtpv2_version_not_supported( _peer: Arc<Mutex<Gtpv2Peer>>,
 }
 
 
-fn is_group_ie(ie_type: u8, dictionary: &GtpMessage) -> bool {
-    dictionary.ie_list
-        .iter()
-        .find(|info| info.ie_type == ie_type )
-        .map_or(false, |info| info.group_ie_info.is_some())
-}
-
-
 pub async fn find_dictionary(msg_type: u8) -> Result<GtpMessage, String> {
     let dictionary = GTP_DICTIONARY.read().await;
 
@@ -279,53 +238,6 @@ pub async fn find_dictionary(msg_type: u8) -> Result<GtpMessage, String> {
     }
 }
 
-fn extract_nested_ies(raw_data: &[u8], dictionary: &GtpMessage) -> Vec<(u8, usize) > {
-    let mut ies = Vec::new();
-    let mut index = 0;
-
-    while index + 4 <= raw_data.len() {
-        let ie_type = raw_data[index];
-        let ie_length = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]) as usize;
-
-        if index + 4 + ie_length > raw_data.len() {
-            break;
-        }
-
-        ies.push((ie_type, ie_length ));
-        index += 4 + ie_length;
-    }
-
-    ies
-}
-
-
-fn check_ie_length(raw_data: &[u8], dictionary: &GtpMessage)
-    -> Vec<(u8, usize, Vec<(u8, usize)>) > {
-    let mut ies = Vec::new();
-    let mut index = 0;
-
-    while index + 4 <= raw_data.len() {
-        let ie_type = raw_data[index];
-        let ie_length = u16::from_be_bytes([raw_data[index + 1], raw_data[index + 2]]) as usize;
-
-        if index + 4 + ie_length > raw_data.len() {
-            break;
-        }
-
-        let ie_value = &raw_data[index+4..index+4+ie_length];
-        let nested_ies = if is_group_ie(ie_type, &dictionary) {
-            extract_nested_ies(ie_value, &dictionary)
-        }
-        else {
-            Vec::new()
-        };
-
-        ies.push((ie_type, ie_length, nested_ies));
-        index += 4 + ie_length;
-    }
-
-    ies
-}
 
 #[derive(Debug, Clone)]
 enum LVValue {
@@ -341,6 +253,7 @@ struct TLV {
     i:  u8,     //instance
     v:  Vec<u8>,//value
 }
+
 impl TLV {
     fn new() -> Self {
         TLV{
@@ -391,6 +304,21 @@ impl LV {
     }
 }
 
+pub struct PktInfo {
+	ie:		IeMessage,
+	header: Gtpv2CHeader,
+	peer_ip: Ipv4Addr,
+}
+
+impl PktInfo {
+	pub fn new(ip: Ipv4Addr) -> Self {
+		PktInfo {
+			ie:		IeMessage::new(),
+			header: Gtpv2CHeader::new(),
+			peer_ip: ip,
+		}
+	}
+}
 
 #[derive(Debug, Clone)]
 struct IeMessage {
@@ -420,8 +348,7 @@ impl IeMessage {
 }
 
 
-pub fn get_ie_value(raw_data: &[u8])
-    -> IeMessage
+pub fn get_ie_value(raw_data: &[u8]) -> IeMessage
 {
     let mut index = 0;
     let mut table = IeMessage::new();
@@ -458,6 +385,7 @@ pub fn get_ie_value(raw_data: &[u8])
 
             table.add_ie( t, glv);
             index += gpos;
+
             continue;
         }
 
@@ -482,59 +410,76 @@ pub fn get_ie_value(raw_data: &[u8])
 }
 
 
-async fn recv_delete_session_req( peer: & mut Peer, ies: IeMessage, teid: u32,
-    teid_list: &TeidList, sess_list: &SessionList)
+async fn recv_delete_session_req(pkt_info: PktInfo, teid_list: &TeidList, sess_list: &SessionList)
 -> Result < (), String>
 {
     let mut imsi: String;
     let mut ebi = 0;
+    let mut cause_value: u8;
     let mut pdn_index:u32 = 0;
+	let mut session: Arc<Mutex<Session>>;
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
 
     trace!("GET EBI IE");
-
-	if let Result::Ok(ret) = get_single_value(ies, GTPV2C_IE_EBI) {
+	if let Result::Ok(ret) = get_single_value(pkt_info.ie, GTPV2C_IE_EBI) {
 		ebi = ret[0];
 	}
 	else {
-		return Err("Fail to get IE EBI".to_string());
+        cause_value = 64; //Context_NOT_Found
+		warn!("Fail to get IE EBI");
 	}
 
-	let mut session: Arc<Mutex<Session>> = if let Some(result) = teid_list.get(&teid) {
-		result
+    if let Some(result) = teid_list.get(&pkt_info.header.teid) {
+		session = result;
+	    let imsi = session.lock().unwrap().imsi.clone();
+
+        delete_pdn_and_bearer(&mut session, ebi);
+
+        gtp_send_delete_session_response(session.clone());
 	}
 	else {
-		return Err(format!("Fail to get Session by teid{}", teid).to_string());
+        cause_value = 64; //Context_NOT_Found
+		warn!("Fail to get Session by teid{}", pkt_info.header.teid);
 	};
-	let imsi = session.lock().unwrap().imsi.clone();
-
-    delete_pdn_and_bearer(&mut session, ebi);
-
-    gtp_send_delete_session_response(peer.clone(), &imsi.clone(), pdn_index as usize).await;
 
     Ok(())
 }
 
-async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32,
-    teid_list: &TeidList, sess_list: &SessionList)
+
+async fn recv_modify_bearer_req(pkt_info: PktInfo, teid_list: &TeidList, sess_list: &SessionList)
 -> Result < (), String>
 {
-	let mut session: Arc<Mutex<Session>>;
     let mut ebi = 0;
-    let mut pdn_index:u32 = 0;
-    let mut address = [Ipv4Addr::new(0,0,0,0); 48];
+    let mut pdn;
+	let session: Arc<Mutex<Session>>;
+
+	info!("Get Session by teid");
+	session = if let Some(result) = teid_list.get(&pkt_info.header.teid) {
+        result
+	}
+	else {
+		return Err(format!("Fail to get Session by teid{}", pkt_info.header.teid).to_string());
+	};
 
     trace!("GET EBI IE");
-	if let Result::Ok(ret) = get_single_value(ies.clone(), GTPV2C_IE_EBI) {
+	if let Result::Ok(ret) = get_single_value(pkt_info.ie.clone(), GTPV2C_IE_EBI) {
 		ebi = ret[0];
 	}
 	else {
 		return Err("Fail to get IE EBI".to_string());
 	}
 
+    let session_locked = session.lock().unwrap();
+    if let Some(ret) = find_pdn(& session_locked, ebi) {
+        pdn = ret;
+    }
+	else {
+		return Err("Fail to get IE EBI".to_string());
+    }
+
 	trace!("Get Bearer Context IE"); //Group IE
 	let mut bearers: Vec<BearerCnxt> = vec![BearerCnxt::new()];
-	if let Some(lv) = ies.get_ie(GTPV2C_IE_BEARER_CONTEXT) {
+	if let Some(lv) = pkt_info.ie.get_ie(GTPV2C_IE_BEARER_CONTEXT) {
 
 		if let LVValue::Nested( ref group_ies ) = lv[0].v {
 			let mut fteid_index = 0;
@@ -578,13 +523,99 @@ async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32,
 	}
 	info!("Done to get Info from IEs");
 
+	trace!("Set Bearer");
+    {
+		for bearer_info in bearers {
+        	if let Some(index) = find_bearer(session.clone(), bearer_info.ebi) {
+        		let session = &mut session.lock().unwrap();
+				let mut bearer = &mut session.bearer[index];
+				modify_bearer(&mut bearer, bearer_info);
+			}
+		}
+		// if this node is SGW, allocate TEID for S5S8U
+    }
+
+    gtp_send_modify_bearer_response (session.clone(), pdn.lbi);
+
+    Ok(())
+}
+
+async fn recv_create_bearer_req(pkt_info: PktInfo, teid_list: &TeidList, sess_list: &SessionList)
+-> Result < (), String>
+{
+	let session: Arc<Mutex<Session>>;
+    let mut ebi = 0;
+    let mut pdn;
+
 	info!("Get Session by teid");
-	session = if let Some(result) = teid_list.get(&teid) {
-		result
+	session = if let Some(result) = teid_list.get(&pkt_info.header.teid) {
+        result
 	}
 	else {
-		return Err(format!("Fail to get Session by teid{}", teid).to_string());
+		return Err(format!("Fail to get Session by teid{}", pkt_info.header.teid).to_string());
 	};
+
+    trace!("GET EBI IE");
+	if let Result::Ok(ret) = get_single_value(pkt_info.ie.clone(), GTPV2C_IE_EBI) {
+		ebi = ret[0];
+	}
+	else {
+		return Err("Fail to get IE EBI".to_string());
+	}
+
+    let session_locked = session.lock().unwrap();
+    if let Some(ret) = find_pdn(& session_locked, ebi) {
+        pdn = ret;
+    }
+	else {
+		return Err("Fail to get IE EBI".to_string());
+    }
+
+	trace!("Get Bearer Context IE"); //Group IE
+	let mut bearers: Vec<BearerCnxt> = vec![BearerCnxt::new()];
+	if let Some(lv) = pkt_info.ie.get_ie(GTPV2C_IE_BEARER_CONTEXT) {
+
+		if let LVValue::Nested( ref group_ies ) = lv[0].v {
+			let mut fteid_index = 0;
+			for tlv in group_ies {
+				let mut bearer_info: BearerCnxt = BearerCnxt::new();
+
+				match tlv.t {
+					GTPV2C_IE_EBI => {
+    					trace!("\tGET EBI IE");
+						bearer_info.ebi = tlv.v[0];
+					}
+
+					GTPV2C_IE_FTEID => {
+    					trace!("\tGET F_TEID IE");
+            			// let mut info  = control_info::new();
+						bearer_info.iface_info[fteid_index].used = true;
+						bearer_info.iface_info[fteid_index].iface_type = tlv.v[0] & 0x3f;
+						bearer_info.iface_info[fteid_index].teid = u32::from_be_bytes( tlv.v[1..5].try_into().expect("convert to teid problem") );
+						bearer_info.iface_info[fteid_index].addr = Ipv4Addr::new( tlv.v[5], tlv.v[6], tlv.v[7], tlv.v[8]);
+						fteid_index += 1;
+					}
+
+					GTPV2C_IE_BEARER_QOS => {
+    					trace!("\tGET Bearer QoS IE");
+						bearer_info.bearer_qos.flag   = tlv.v[0];
+						bearer_info.bearer_qos.qci    = tlv.v[1];
+						bearer_info.bearer_qos.mbr_ul = u32::from_be_bytes( tlv.v[2..6].try_into().expect("convert to mbr_ul problem"));
+						bearer_info.bearer_qos.mbr_dl = u32::from_be_bytes( tlv.v[6..10].try_into().expect("convert to mbr_dl problem"));
+						bearer_info.bearer_qos.gbr_ul = u32::from_be_bytes( tlv.v[10..14].try_into().expect("convert to gbr_ul problem"));
+						bearer_info.bearer_qos.gbr_dl = u32::from_be_bytes( tlv.v[14..18].try_into().expect("convert to gbr_dl problem"));
+					}
+
+					_ => {
+						error!("Unknown IE type: 0x{:x}", tlv.t);
+					}
+				}
+
+				bearers.push(bearer_info);
+			}
+		}
+	}
+	info!("Done to get Info from IEs");
 
 	trace!("Set Bearer");
     {
@@ -597,20 +628,25 @@ async fn recv_modify_bearer_req( peer: & mut Peer, ies: IeMessage, teid: u32,
 		}
 		// if this node is SGW, allocate TEID for S5S8U
     }
-    // gtp_send_modify_bearer_response ();
+
+    //TODO
+    // gtp_send_create_bearer_response (session.clone(), pdn.lbi);
+
     Ok(())
 }
 
 
-async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32,
+async fn recv_crte_sess_req(pkt_info: PktInfo,
     teid_list: &TeidList, sess_list: &SessionList)
 -> Result < (), String>
 {
     let imsi;
     let msisdn;
+    let mut session: Arc<Mutex<Session>>;
     let mut ebi = 0;
     let mut pdn_index = 0;
     let mut address = [Ipv4Addr::new(0,0,0,0); 48];
+	let ies = pkt_info.ie;
 
     trace!("GET IE IMSI");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_IMSI) {
@@ -679,6 +715,13 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32,
 			}
 
             if info.interface_type == 6 {
+    			let mut peers = GTP2_PEER.lock().await;//unwrap();
+    			let peer = if let Some(value) = peers.get_mut(&u32::from(pkt_info.peer_ip)) {
+        			value
+				}
+    			else {
+        			return Err(("Fail to get peer").to_string());
+				};
                 peer.teid = info.teid;
             }
 
@@ -772,63 +815,53 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32,
 
 	}
 
-    if teid == 0 { //Initial Attach
-        let mut session;
+    if pkt_info.header.teid == 0 { //Initial Attach
 
         trace!("Create New session");
-        match find_session_or_create(imsi.clone(), sess_list) {
-            Ok(value) => session = value,
-            Err(error) => return Err(error),
-        }
+        session = find_session_or_create(imsi.clone(), sess_list);
 
-        let teid = if let Some(result) = generate_teid() {
+		session.lock().unwrap().peer_ip = pkt_info.peer_ip;
+
+		let teid = if let Some(result) = generate_teid() {
 			result
 		}
-        else {
+		else {
 			return Err("Failt to generate TEID".to_string());
 		};
 
-        trace!("Created TEID: 0x{:x?}", teid);
-        teid_list.add(teid, Arc::clone(&session));
+		trace!("Created TEID: 0x{:x?}", teid);
+		teid_list.add(teid, Arc::clone(&session));
 
         trace!("Save MSISDN information");
-        {
-            session.lock().unwrap().msisdn = msisdn;
-        }
+		session.lock().unwrap().msisdn = msisdn;
 
         trace!("Allocation IP Address");
         let alloc_ip = allocate_ip();
 
         trace!("Setting for PDN");
-        match alloc_pdn(&mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
-            Ok(value) => pdn_index = value,
-            Err(error) => return Err(error),
-        }
+  		match alloc_pdn(&mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
+			Ok(value) => pdn_index = value,
+			Err(error) => return Err(error),
+		}
 
         trace!("Setting for Bearer");
 		match alloc_bearer(&mut session, ebi, bearers) {
 				Err(error) => return Err(error),
-				Ok(ret ) => trace!("Success to allocate bearer. current bearere cnt: {ret}")}
-
-        trace!("Control interface settings");
-        session.lock().unwrap().control.extend(gtpc_interfaces);
-
-        gtp_send_create_session_response(peer.clone(), session, pdn_index as usize).await;
+				Ok(ret ) => trace!("Success to allocate bearer. current bearere cnt: {ret}")
+		}
 	}
     else { // Multiple PDN Attach 
         trace!("Already Exist Session");
 
-        let mut session: Arc<Mutex<Session>> = if let Some(result) = teid_list.get(&teid) {
+        session = if let Some(result) = teid_list.get(&pkt_info.header.teid) {
             result
         }
         else {
-            return Err(format!("Fail to get Session by teid{}", teid).to_string());
+            return Err(format!("Fail to get Session by teid{}", pkt_info.header.teid).to_string());
         };
 
-        let imsi = session.lock().unwrap().imsi.clone();
-
         trace!("Allocation IP Address");
-        let alloc_ip = allocate_ip();
+		let alloc_ip = allocate_ip();
 
         trace!("Setting for PDN");
         match alloc_pdn(&mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
@@ -839,47 +872,51 @@ async fn recv_crte_sess_req( peer: & mut Peer, ies: IeMessage, teid: u32,
         trace!("Setting for Bearer");
 		match alloc_bearer(&mut session, ebi, bearers) {
 			Err(error) => return Err(error),
-			Ok(ret ) => trace!("Success to allocate bearer. current bearere cnt: {ret}")}
-
-        trace!("Control interface settings");
-        session.lock().unwrap().control.extend(gtpc_interfaces);
-
-        gtp_send_create_session_response(peer.clone(), session, pdn_index as usize).await;
+			Ok(ret ) => trace!("Success to allocate bearer. current bearere cnt: {ret}")
+		}
     }
+
+	trace!("Control interface settings");
+	session.lock().unwrap().control.extend(gtpc_interfaces);
+
+	gtp_send_create_session_response(session).await;
 
     Ok(())
 }
 
-async fn recv_echo_req( peer: & mut Peer, ies: IeMessage)
+async fn recv_echo_req(pkt_info: PktInfo)
 -> Result < (), String>
 {
+    let mut session: Arc<Mutex<Session>>;
     let mut restart_counter = 0;
 
     trace!("GET IE Recovery");
-    // if let Some(lv) = ies.get_ie(GTPV2C_IE_RECOVERY) {
-    //     if let LVValue::Single(ref v) = lv[0].v {
-    //     	restart_counter = v[0];
-	// 	}
-    // }
-	if let Result::Ok(ret) = get_single_value(ies, GTPV2C_IE_RECOVERY) {
+	if let Result::Ok(ret) = get_single_value(pkt_info.ie, GTPV2C_IE_RECOVERY) {
 		restart_counter = ret[0];
 	}
 	else {
 		return Err("Fail to get IE Recovery".to_string());
 	}
 
+    let mut peers = GTP2_PEER.lock().await;//unwrap();
+    let mut peer = if let Some(value) = peers.get_mut(&u32::from(pkt_info.peer_ip)) {
+        value
+    }
+    else {
+        return Err(("Fail to get peer").to_string());
+    };
     if peer.get_peer_status() == false {
         peer.activate_peer_status();
     }
     peer.update_last_active();
 
-    gtp_send_echo_response(peer.clone() , restart_counter).await;   
+    gtp_send_echo_response(peer , restart_counter).await;   
 
     Ok(())
 }
 
 
-async fn recv_echo_rsp( peer: & mut Peer, ies: IeMessage)
+async fn recv_echo_rsp(pkt_info: PktInfo)
 -> Result < (), String>
 {
     let mut restart_counter = 0;
@@ -890,57 +927,112 @@ async fn recv_echo_rsp( peer: & mut Peer, ies: IeMessage)
     //     	restart_counter = v[0];
 	// 	}
     // }
-	if let Result::Ok(ret) = get_single_value(ies, GTPV2C_IE_RECOVERY) {
-		restart_counter = ret[0];
+	if let Result::Ok(ret) = get_single_value(pkt_info.ie, GTPV2C_IE_RECOVERY) {
+		// restart_counter = ret[0];
 	}
 
     Ok(())
 }
 
 
-async fn pgw_recv( peer: &mut Peer, ies: IeMessage,
-    msg_type: u8, teid: u32, rcv_seq: u32,
+async fn pgw_recv( peer: &mut Peer, pkt_info: PktInfo,
+	// ies: IeMessage, msg_type: u8, teid: u32, rcv_seq: u32,
     teid_list: &TeidList, sess_list: &SessionList)
 {
-    match msg_type {
+	trace!("{}", GTPV2_MSG_TYPES[pkt_info.header.t as usize]);
+    match pkt_info.header.t {
         GTPV2C_ECHO_REQ => {
-            trace!("This message is Echo Request");
-            recv_echo_req( peer, ies).await;
+            recv_echo_req(pkt_info).await;
         }
         GTPV2C_ECHO_RSP => {
-            trace!("This message is Echo Request");
-            find_pkt_in_queue(peer.ip, rcv_seq);
-            recv_echo_rsp( peer, ies).await;
+            find_pkt_in_queue(peer.ip, pkt_info.header.s);
+            recv_echo_rsp(pkt_info).await;
         }
 
         // Create Session Reqeust
         GTPV2C_CREATE_SESSION_REQ => {
-            trace!("This message is Create Session Request");
-            recv_crte_sess_req( peer, ies, teid, teid_list, sess_list).await;
+            recv_crte_sess_req(pkt_info, teid_list, sess_list).await;
         }
 
         //Modify Bearere Request
         GTPV2C_MODIFY_BEARER_REQ => {
-            trace!("This message is Modify Bearer Request");
-            recv_modify_bearer_req( peer, ies, teid, teid_list, sess_list).await;
+            recv_modify_bearer_req(pkt_info, teid_list, sess_list).await;
+        }
+
+        GTPV2C_CREATE_BEARER_REQ => {
+            recv_create_bearer_req(pkt_info, teid_list, sess_list).await;
         }
 
         //Delete Session Request
         GTPV2C_DELETE_SESSION_REQ => {
-            trace!("This message is Delete Session Request");
-            recv_delete_session_req( peer, ies, teid, teid_list, sess_list).await;
+            recv_delete_session_req( pkt_info, teid_list, sess_list).await;
         }
         _ => {
-            error!("Unknown Message type: {}", msg_type);
+            error!("Unknown Message type: {}", pkt_info.header.t);
         }
     }
 }
 
 
-pub async fn gtpv2_recv_task(socket: UdpSocket) {
+pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer, teid_list: &TeidList, sess_list: &SessionList)
+-> Result<(), String> {
+
+    let hdr_len;
+    let mut msg_define;
+	let mut pkt_info = PktInfo::new(peer.ip);
+
+    trace!("Processed GTPv2 data.");
+    let ret = parse_header(_data);
+    match ret {
+        Ok( (v, n)) => {
+			pkt_info.header	= v;
+            hdr_len	= n;
+        }
+        _ => {
+            error!("Error in parsing header");
+            return Err(("error").to_string());
+        },
+    }
+
+    trace!("Get dictionary based on receive message type");
+    let mut dictionary = GTP_DICTIONARY.write().await;
+
+    let result = dictionary 
+            .iter_mut().find(|msg | msg.msg_type == pkt_info.header.t )
+            .ok_or(format!("Unknown message type: 0x{:x}",pkt_info.header.t));
+
+    match result {
+        Ok(data) => {
+            info!("Success! to get gtp dictionary");
+            msg_define = data;
+        }
+        Err(err) => {
+            error!("Fail to get dictionary. {}", err);
+            return Err(format!("error").to_string());
+        },
+    }
+
+	let ies = check_ie_length(&_data[hdr_len..], & mut msg_define);
+    if let Err(ret) = validate_length(&ies, &msg_define) {
+        error!("Validation Check false: [{}]", ret);
+    }
+
+    trace!("GET IE value");
+    pkt_info.ie = get_ie_value(&_data[hdr_len..]);
+
+    trace!("Update PEER");
+    peer.update_rseq(pkt_info.header.s);
+
+    trace!("Process the packet as a PGW");
+    pgw_recv( peer, pkt_info, teid_list, sess_list).await;
+
+    Ok(())
+}
+
+
+pub async fn recv_task(socket: UdpSocket) {
     let mut buf = [0u8; BUFSIZ];
     let timeout = Duration::from_millis(1000);
-    println!("Start Recv Task");
 
     let teid_list = TeidList::new();
     let sess_list = SessionList::new();
@@ -963,10 +1055,7 @@ pub async fn gtpv2_recv_task(socket: UdpSocket) {
                     let key = u32::from(*sin_addr);//.into();
 
                     if let Some(peer) = list.get_mut(&key) {
-                        println!("Peer status: {}", peer.status);
-                        println!("Activate!!!!");
                         peer.activate_peer_status();
-                        println!("Peer status: {}", peer.status);
                         _ = recv_gtpv2(&buf[..nbyte], peer, &teid_list, &sess_list ).await;
                     }
                     drop(list);
@@ -985,65 +1074,4 @@ pub async fn gtpv2_recv_task(socket: UdpSocket) {
             }
         }
     }
-}
-
-pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer,
-    teid_list: &TeidList, sess_list: &SessionList
-)  -> Result<(), String> {
-    
-    let hdr_len;
-    let rcv_msg_type;
-    let msg_define;
-    let mut teid = 0;
-    let mut rcv_seq = 0;
-
-    trace!("Processed GTPv2 data.");
-    let ret = parse_header(_data);
-    match ret {
-        Ok( (v, n)) => {
-            rcv_msg_type = v.t;
-            teid         = v.teid;
-            rcv_seq      = v.s;
-            hdr_len      = n;
-        }
-        _ => {
-            error!("Error in parsing header");
-            return Err(format!("error").to_string());
-        },
-    }
-
-    trace!("Get dictionary based on receive message type");
-    let dictionary = GTP_DICTIONARY.read().await;
-
-    let result = dictionary 
-            .iter().find(|msg | msg.msg_type == rcv_msg_type )
-            .ok_or(format!("Unknown message type: 0x{:x}", rcv_msg_type));
-
-    match result {
-        Ok(data) =>{
-            info!("Success! to get gtp dictionary");
-            msg_define = data;
-        }
-        Err(err) => { println!("{}", err);
-            error!("Fail to get dictionary");
-            return Err(format!("error").to_string());
-        },
-    }
-
-    let ies = check_ie_length(&_data[hdr_len..], &msg_define);
-    if let Err(ret) = validate_length(&ies, &msg_define) {
-        error!("Validation Check false: [{}]", ret);
-    }
-
-    trace!("GET IE value");
-    let ies = get_ie_value(&_data[hdr_len..]);
-
-    trace!("Update PEER");
-    peer.update_rseq(rcv_seq);
-
-    trace!("Process the packet as a PGW");
-    pgw_recv( peer, ies, rcv_msg_type, teid, rcv_seq, teid_list, sess_list).await;
-
-
-    Ok(())
 }

@@ -171,7 +171,7 @@ pub struct Session {
     pub bearer:     Vec<bearer_info>,
     pub pdn:        Vec<pdn_info>,
 
-    // pub peerip:     Ipv4Addr,
+    pub peer_ip:     Ipv4Addr,
     pub status:     u8,     //Session Status
     pub seqnum:     u32,
 
@@ -192,7 +192,7 @@ impl Session {
 			// peertype:   0,
 			status:     0, 
 			seqnum:     0, 
-			// ip:         Ipv4Addr::new(0,0,0,0),
+			peer_ip:         Ipv4Addr::new(0,0,0,0),
 			// peer:       Peer::new(
 			// Ipv4Addr::new(0,0,0,0), 0, "".to_string()),
 		}
@@ -214,20 +214,23 @@ pub fn generate_teid() -> Option<u32> {
 
 
 pub fn find_session_or_create(imsi: String, sess_list: &SessionList) 
--> Result<Arc<Mutex<Session>>, String>
+-> Arc<Mutex<Session>>
 {
+    let session;
     let locked_session = sess_list.find_session_by_imsi(imsi.clone());
 
     match locked_session {
-        Ok(value) => 
-            return Err(format!("Fail to find session by IMSI[{}]",imsi).to_string()),
+        Ok(value) => {
+            session = value;
+            warn!("already have session. IMSI:{}",imsi);
+        }
         _ => {
             warn!("Fail to find session by IMSI: {} and create", imsi);
-				let sess = sess_list.create_session(imsi.clone());
-				sess_list.add(imsi.clone(), sess.clone());
-            return Ok (sess)
+			session = sess_list.create_session(imsi.clone());
+			sess_list.add(imsi.clone(), session.clone());
         }
     }
+    return session;
 }
 
 
@@ -256,10 +259,10 @@ pub fn find_empty_pdn(session: &mut Session)
     .find(|pdn|pdn.used == false)
 }
 
-pub fn find_pdn(session: &mut Session, ebi: u8)
--> Option<&mut pdn_info>
+pub fn find_pdn( session: & Session, ebi: u8)
+-> Option<& pdn_info>
 {
-    session.pdn.iter_mut()
+    session.pdn.iter()
     .find(|pdn|pdn.lbi == ebi)
 }
 
