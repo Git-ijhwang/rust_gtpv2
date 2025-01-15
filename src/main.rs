@@ -12,6 +12,8 @@ mod peers;
 mod ippool;
 mod session;
 mod dump;
+mod msg_static;
+mod api_client;
 
 use std::fs;
 use std::io::Error;
@@ -22,6 +24,10 @@ use chrono::Local;
 use std::path::Path;
 use std::{fs::File, fs::metadata,io::Write};
 use log::{debug, error, info, trace, warn};
+use tokio::sync::Mutex;
+use std::sync::Arc;
+
+
 
 use crate::peers::*;
 use crate::config::*;
@@ -30,6 +36,7 @@ use crate::gtpv2_recv::*;
 use crate::gtp_dictionary::*;
 use crate::ippool::*;
 use crate::pkt_manage::*;
+use crate::api_client::run_mmc_communication;
 
 
 #[derive(Debug, Error)]
@@ -125,22 +132,33 @@ async fn main() -> Result<(), Error>
     info!("Peer Manage");
     let peer_handle = tokio::spawn(async move { peer_manage().await; });
 
-    // let mut queue_clone = SHARED_QUEUE.clone();
     info!("Queue Manage");
     let queue_handle = tokio::spawn(async move { check_timer().await; });
 
+	info!("MMC Task Start");
+	let api_handle = tokio::spawn(async {
+		let config = CONFIG_MAP.read().await;
+		if let Some(addr) = config.get("API_SERVER").clone() {
+			run_mmc_communication(addr.as_str()).await;
+		}
+		else {
+			eprintln!("Failed to fall to call function for api server");
+		}
+	});
 
-    let config = CONFIG_MAP.read().await;
-    if let Some(src_port) = config.get("SrcPort").clone() {
-        if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", src_port)) {
-            info!("Socket Successfully Created!: {:?}", recv_socket);
-            recv_task(recv_socket).await;
-        }
-        else {
-            eprintln!("Failed to create socket for address 0.0.0.0:{}", src_port);
-        };
-    }
+	info!("Receive Task Start");
+	let config = CONFIG_MAP.read().await;
+	if let Some(src_port) = config.get("SrcPort").clone() {
+		if let Ok(recv_socket) = socket_create( format!("0.0.0.0:{}", src_port)) {
+			info!("Socket Successfully Created!: {:?}", recv_socket);
+			recv_task(recv_socket).await;
+		}
+		else {
+			eprintln!("Failed to create socket for address 0.0.0.0:{}", src_port);
+		}
+	}
 
-    drop(config);
+	let _ = tokio::join!(peer_handle, queue_handle, api_handle);
+
     Ok(())
 }
