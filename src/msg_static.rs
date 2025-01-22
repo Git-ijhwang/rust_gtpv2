@@ -1,50 +1,179 @@
-use tokio::time;
 use reqwest::Client;
+// use tokio::sync::Mutex;
+// use std::sync::Mutex;
 use serde::Serialize;
-use std::error::Error;
 use chrono::{DateTime, Utc};
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use sysinfo::{System};
+use std::sync::Arc;
+use tokio::sync::{RwLock, Mutex};
 
-#[derive(Debug, Default)]
-pub struct MessageStats {
-    sent: u64,
-    received: u64,
-    timestamps: Vec<DateTime<Utc>>,
+
+#[derive(Serialize, Clone)]
+pub struct CpuStats {
+    pub usage: f32,
+    pub timestamps: DateTime<Utc>,
 }
 
+#[derive(Serialize, Clone)]
+pub struct MemStats {
+    pub usage: f32,
+    timestamps: DateTime<Utc>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct MessageStats {
+    message_type:   u8,
+    success:        bool,
+    error:          u8,
+    timestamps:     DateTime<Utc>,
+}
+
+impl MessageStats {
+    pub fn new() -> Self {
+        MessageStats {
+            message_type: 0,
+            success: false,
+            error: 0,
+            timestamps: Utc::now(),
+        }
+    }
+}
+
+#[derive(Serialize, Clone)]
+pub struct ReportData {
+    pub cpu_data: Vec<CpuStats>,
+    pub mem_data: Vec<MemStats>,
+    pub msg_data: Vec<MessageStats>,
+}
+
+
+pub type MessageStatsData = Vec<MessageStats>;
+
+// lazy_static::lazy_static! {
+//     pub static ref MSG_STAT: Arc<Mutex<MessageStatsData>> = Arc::new(Mutex::new(MessageStatsData::new()));
+// }
+
+lazy_static::lazy_static! {
+    pub static ref MSG_STAT: Mutex<Vec<MessageStats>> = Mutex::new(Vec::new());
+
+}
+
+pub async fn update_message_stats (message_type: u8, success: bool, error: u8) {
+    let mut msg = MSG_STAT.lock().await;
+
+    msg.push(MessageStats {
+        message_type,
+        success,
+        error,
+        timestamps: Utc::now(),
+    });
+}
+
+fn update_cpu_stats(cpu_data: &mut Vec<CpuStats>, usage: f32) {
+    cpu_data.push(CpuStats {
+        usage,
+        timestamps: Utc::now(),
+    });
+}
+
+fn update_mem_stats(mem_data: &mut Vec<MemStats>, usage: f32) {
+    mem_data.push(MemStats {
+        usage,
+        timestamps: Utc::now(),
+    });
+}
+
+impl CpuStats {
+    pub fn new() -> Self {
+        CpuStats {
+            usage: 0.0,
+            timestamps: Utc::now(),
+        }
+    }
+}
+
+pub async fn report_stats(client: &Client, url: &str)
+-> Result<(), Box<dyn std::error::Error>>
+{
+    let mut system = System::new_all();
+
+    let mut cpu_data: Vec<CpuStats> = Vec::new();
+    let mut mem_data: Vec<MemStats> = Vec::new();
+    let mut cnt = 0;
+
+    loop {
+        cnt += 1;
+
+        // let msg = MSG_STAT.lock().unwrap();
+        let msg = MSG_STAT.lock().await;
+        system.refresh_cpu_all();
+        system.refresh_memory();
+
+        let total_cpu_usage = system.global_cpu_usage();//.cpu_usage();
+        update_cpu_stats(&mut cpu_data, total_cpu_usage);
+
+        let total_memory = system.total_memory() as f32;
+        let used_memory = system.used_memory() as f32;
+        let memory_usage = (used_memory / total_memory) * 100.0; // 퍼센트로 변환
+        update_mem_stats(&mut mem_data, memory_usage);
+
+        // std::thread::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        if cnt > 5 {
+            cnt = 0;
+
+            let report_data = ReportData {
+                cpu_data: cpu_data.clone(),
+                mem_data: mem_data.clone(),
+                msg_data: msg.clone(),
+            };
+
+            let response = client
+                .post(url)
+                .json(&report_data)
+                .send()
+                .await?;
+
+            if response.status().is_success() {
+                println!("Successfully reported stats with timestamps to server!");
+            } else {
+                eprintln!("Failed to report stats: {}", response.status());
+            }
+
+            cpu_data.clear();
+            mem_data.clear();
+        }
+    }
+
+    Ok(())
+}
+
+
+/*
 // 메시지 타입별 통계를 저장하는 타입
 pub type StatsMap = HashMap<u8, MessageStats>;
 
 // 공유 가능한 상태를 위한 타입 정의
 pub type SharedStats = Arc<Mutex<StatsMap>>;
 
-
-
 // 메시지 송수신 통계와 시간을 업데이트하는 함수
-fn update_stats_with_time(stats: &SharedStats, msg_type: u8, is_sent: bool) {
-    let mut stats_map = stats.lock().unwrap();
+pub async fn update_stats_with_time(
+    // stats: &SharedStats,
+    msg_type: u8, is_sent: bool) {
+    // let mut stats_map = stats.lock().unwrap();
+    let mut stats_map = SharedStats.lock().unwrap();
     let entry = stats_map.entry(msg_type).or_default();
 
-    // 송수신 카운트 업데이트
     if is_sent {
         entry.sent += 1;
     } else {
         entry.received += 1;
     }
 
-    // 현재 시간 기록
     entry.timestamps.push(Utc::now());
 }
 
 
-#[derive(Serialize)]
-struct ReportData {
-    message_type: u8,
-    sent: u64,
-    received: u64,
-    timestamps: Vec<String>, // ISO 8601 형식으로 변환된 시간
-}
 
 fn generate_and_reset_report_data(stats: &SharedStats) -> Vec<ReportData> {
     let mut stats_map = stats.lock().unwrap();
@@ -84,17 +213,6 @@ pub async fn report_stats_with_time(client: &Client, url: &str,
     Ok(())
 }
 
-// 메시지 처리 함수 예제
-fn process_message_with_time(stats: &SharedStats, msg_type: u8) {
-    // 메시지 수신 처리
-    println!("Processing received message of type: {}", msg_type);
-    update_stats_with_time(stats, msg_type, false);
-
-    // 메시지 송신 처리 (예제)
-    println!("Sending response for message type: {}", msg_type);
-    update_stats_with_time(stats, msg_type, true);
-}
-
 
 // #[tokio::main]
 // async fn main() {
@@ -116,3 +234,5 @@ fn process_message_with_time(stats: &SharedStats, msg_type: u8) {
 //         time::sleep(time::Duration::from_secs(5)).await;
 //     }
 // }
+
+*/

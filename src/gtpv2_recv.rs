@@ -11,7 +11,9 @@ use crate::session::*;
 use crate::gtp_msg::*;
 use crate::gtpv2_type::*;
 use crate::gtp_dictionary::{self, *};
+use crate::msg_static::*;
 use crate::{find_pkt_in_queue, session, validate_gtpv2::*};
+
 
 const BUFSIZ: usize = 8192;
 
@@ -458,6 +460,7 @@ async fn recv_modify_bearer_req(pkt_info: PktInfo, teid_list: &TeidList, sess_li
         result
 	}
 	else {
+        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
 		return Err(format!("Fail to get Session by teid{}", pkt_info.header.teid).to_string());
 	};
 
@@ -466,6 +469,7 @@ async fn recv_modify_bearer_req(pkt_info: PktInfo, teid_list: &TeidList, sess_li
 		ebi = ret[0];
 	}
 	else {
+        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
 		return Err("Fail to get IE EBI".to_string());
 	}
 
@@ -474,6 +478,7 @@ async fn recv_modify_bearer_req(pkt_info: PktInfo, teid_list: &TeidList, sess_li
         pdn = ret;
     }
 	else {
+        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
 		return Err("Fail to get IE EBI".to_string());
     }
 
@@ -513,6 +518,7 @@ async fn recv_modify_bearer_req(pkt_info: PktInfo, teid_list: &TeidList, sess_li
 					}
 
 					_ => {
+                        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
 						error!("Unknown IE type: 0x{:x}", tlv.t);
 					}
 				}
@@ -607,6 +613,7 @@ async fn recv_create_bearer_req(pkt_info: PktInfo, teid_list: &TeidList, sess_li
 					}
 
 					_ => {
+                        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
 						error!("Unknown IE type: 0x{:x}", tlv.t);
 					}
 				}
@@ -662,7 +669,10 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
 				}
 			}
 		}
-        else { return Err("Error to get IMSI from LVValue::Single".to_string()); }
+        else {
+            update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
+            return Err("Error to get IMSI from LVValue::Single".to_string());
+        }
     } else {
         error!("IMSI IE not found");
         return Err("IMSI IE not found.".to_string());
@@ -672,7 +682,6 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
     if let Some(lv) = ies.get_ie(GTPV2C_IE_MSISDN) {
     
         if let LVValue::Single(ref data) = lv[0].v {
-			// match decode_tbcd(&data) {
 			match decode_tbcd(data) {
 				Ok(decoded) => {
 					info!("TBCD Convert for MSISDN success");
@@ -680,6 +689,7 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
 				}
 				Err(_) => {
 					error!("Failed to decode MSISDN");
+                    update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
 					return Err("Failed to decode MSISDN.".to_string());
 				}
 			}
@@ -693,7 +703,10 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
     trace!("GET EBI IE");
     if let Some(lv) = ies.get_ie(GTPV2C_IE_EBI) {
         if let LVValue::Single(ref v) = lv[0].v { ebi = v[0];}
-        else {return Err("Single value is error".to_string());}
+        else {
+            update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
+            return Err("Single value is error".to_string());
+        }
     }
 
     trace!("GET FTEID IE");
@@ -720,7 +733,8 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
         			value
 				}
     			else {
-        			return Err(("Fail to get peer").to_string());
+                    update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
+        			return Err(("Unknown Interface type").to_string());
 				};
                 peer.teid = info.teid;
             }
@@ -739,8 +753,7 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
     if let Some(lv) = ies.get_ie(GTPV2C_IE_APN) {
         if let LVValue::Single(ref v) = lv[0].v {
 			if v.len() > 0{
-				let ret =
-					String::from_utf8(v.clone());
+				let ret = String::from_utf8(v.clone());
 				match ret {
 					Ok(val) => {
 						apn = val;
@@ -748,6 +761,7 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
 					}
 					Err(_) => {
 						error!("Failed to get APN");
+                        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_MISSING_OR_UNKNOWN_APN);
 						return Err("Failed to get APN.".to_string());
 					}
 				}
@@ -805,6 +819,7 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
 					}
 
 					_ => {
+                        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_DENIED_IN_RAT);
 						error!("Unknown IE type: 0x{:x}", tlv.t);
 					}
 				}
@@ -826,6 +841,7 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
 			result
 		}
 		else {
+            update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_TEMPORARILY_REJECTED);
 			return Err("Failt to generate TEID".to_string());
 		};
 
@@ -841,13 +857,19 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
         trace!("Setting for PDN");
   		match alloc_pdn(&mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
 			Ok(value) => pdn_index = value,
-			Err(error) => return Err(error),
+			Err(error) =>{
+                update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_SYSTEM_FAILURE);
+                return Err(error);
+            }
 		}
 
         trace!("Setting for Bearer");
 		match alloc_bearer(&mut session, ebi, bearers) {
 				Err(error) => return Err(error),
-				Ok(ret ) => trace!("Success to allocate bearer. current bearere cnt: {ret}")
+				Ok(ret ) => {
+                    update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_SYSTEM_FAILURE);
+                    trace!("Success to allocate bearer. current bearere cnt: {ret}");
+            }
 		}
 	}
     else { // Multiple PDN Attach 
@@ -857,6 +879,7 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
             result
         }
         else {
+            update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_SYSTEM_FAILURE);
             return Err(format!("Fail to get Session by teid{}", pkt_info.header.teid).to_string());
         };
 
@@ -866,13 +889,21 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
         trace!("Setting for PDN");
         match alloc_pdn(&mut session, ebi, alloc_ip, ambr_dl, ambr_ul, apn) {
             Ok(value) => pdn_index = value,
-            Err(error) => return Err(error),
+            Err(error) => {
+                update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_SYSTEM_FAILURE);
+                return Err(error);
+            }
         }
 
         trace!("Setting for Bearer");
 		match alloc_bearer(&mut session, ebi, bearers) {
-			Err(error) => return Err(error),
-			Ok(ret ) => trace!("Success to allocate bearer. current bearere cnt: {ret}")
+			Err(error) => {
+                update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_SYSTEM_FAILURE);
+                return Err(error);
+            }
+			Ok(ret ) => {
+                trace!("Success to allocate bearer. current bearere cnt: {ret}");
+            }
 		}
     }
 
@@ -887,7 +918,6 @@ async fn recv_crte_sess_req(pkt_info: PktInfo,
 async fn recv_echo_req(pkt_info: PktInfo)
 -> Result < (), String>
 {
-    let mut session: Arc<Mutex<Session>>;
     let mut restart_counter = 0;
 
     trace!("GET IE Recovery");
@@ -895,8 +925,10 @@ async fn recv_echo_req(pkt_info: PktInfo)
 		restart_counter = ret[0];
 	}
 	else {
+        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_MESSAGE_FORMAT);
 		return Err("Fail to get IE Recovery".to_string());
 	}
+    update_message_stats(pkt_info.header.t, true, 0);
 
     let mut peers = GTP2_PEER.lock().await;//unwrap();
     let mut peer = if let Some(value) = peers.get_mut(&u32::from(pkt_info.peer_ip)) {
@@ -905,9 +937,11 @@ async fn recv_echo_req(pkt_info: PktInfo)
     else {
         return Err(("Fail to get peer").to_string());
     };
+
     if peer.get_peer_status() == false {
         peer.activate_peer_status();
     }
+
     peer.update_last_active();
 
     gtp_send_echo_response(peer , restart_counter).await;   
@@ -931,6 +965,7 @@ async fn recv_echo_rsp(pkt_info: PktInfo)
 		// restart_counter = ret[0];
 	}
 
+    update_message_stats(pkt_info.header.t, true, 0);
     Ok(())
 }
 
@@ -1014,6 +1049,7 @@ pub async fn recv_gtpv2(_data: &[u8], peer: &mut Peer, teid_list: &TeidList, ses
 
 	let ies = check_ie_length(&_data[hdr_len..], & mut msg_define);
     if let Err(ret) = validate_length(&ies, &msg_define) {
+        update_message_stats(pkt_info.header.t, false, GTPV2C_CAUSE_INVALID_LENGTH);
         error!("Validation Check false: [{}]", ret);
     }
 

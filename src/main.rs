@@ -13,7 +13,7 @@ mod ippool;
 mod session;
 mod dump;
 mod msg_static;
-mod api_client;
+// mod api_client;
 
 use std::fs;
 use std::io::Error;
@@ -24,8 +24,10 @@ use chrono::Local;
 use std::path::Path;
 use std::{fs::File, fs::metadata,io::Write};
 use log::{debug, error, info, trace, warn};
+use reqwest::Client;
+// use std::sync::Mutex;
 use tokio::sync::Mutex;
-use std::sync::Arc;
+// use std::sync::Arc;
 
 
 
@@ -36,7 +38,8 @@ use crate::gtpv2_recv::*;
 use crate::gtp_dictionary::*;
 use crate::ippool::*;
 use crate::pkt_manage::*;
-use crate::api_client::run_mmc_communication;
+use crate::msg_static::*;
+// use crate::api_client::run_mmc_communication;
 
 
 #[derive(Debug, Error)]
@@ -136,13 +139,24 @@ async fn main() -> Result<(), Error>
     let queue_handle = tokio::spawn(async move { check_timer().await; });
 
 	info!("MMC Task Start");
-	let api_handle = tokio::spawn(async {
-		let config = CONFIG_MAP.read().await;
-		if let Some(addr) = config.get("API_SERVER").clone() {
-			run_mmc_communication(addr.as_str()).await;
-		}
-		else {
-			eprintln!("Failed to fall to call function for api server");
+    let client = Client::new();
+	let api_handle = tokio::spawn( {
+        let client = client.clone(); // 클론하여 소유권 넘기기
+
+		async move {
+			let config = CONFIG_MAP.read().await;
+
+			if let Some(addr) = config.get("API_SERVER").clone() {
+				// run_mmc_communication(addr.as_str()).await;
+				if let Err(e) = report_stats(&client.clone(), addr.as_str()).await {
+					// report_stats(&client, addr.as_str()).await;
+					eprintln!("Error reporting stats: {}", e);
+				}
+			}
+			else {
+				eprintln!("Failed to fall to call function for api server");
+			}
+			()
 		}
 	});
 

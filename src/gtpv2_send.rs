@@ -10,6 +10,7 @@ use crate::peers::*;
 use crate::gtp_msg::*;
 use crate::gtpv2_type::*;
 use crate::pkt_manage::*;
+use crate::msg_static::*;
 use crate::peers::*;
 use crate::session::*;
 
@@ -137,6 +138,7 @@ pub async fn send_gtpv2_message_without_session( buffer: &[u8], msg_type: u8, pe
             }
 
             update_peer(peer);
+            update_message_stats(msg_type, true, 0);
             Ok(())
         }
         _ => Err("Fail to send message to peer".to_string()),

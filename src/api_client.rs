@@ -38,10 +38,10 @@ async fn send_status_to_server(client: &Client, url: &str) -> Result<(), Box<dyn
 
 
 pub async fn run_mmc_communication(addr: &str) {//} -> Result<(), Box<dyn Error>> {
-    let stats: SharedStats = Arc::new(Mutex::new(HashMap::new()));
     let client = Client::new();
     let url_string = format!("https://{}", addr);
     let url: &str = url_string.as_str();
+    let stats: SharedStats = Arc::new(Mutex::new(HashMap::new()));
 
     loop {
         if let Err(e) = send_status_to_server(&client, url.clone()).await {
