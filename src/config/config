@@ -1,0 +1,20 @@
+TYPE =  PGW #SGW
+Addr =  192.168.2.10
+SrcPort =  2123
+
+#GTP Retransmit Settings
+GTPv2_RETRANSMIT_COUNT = 3
+ECHO_PERIOD = 10
+GTPv2_MSG_TIMEOUT = 3
+
+#IPPOOL Settings
+PREFIX_V4 = 192.168.10.0
+NETMASK_V4 = 255.255.255.0
+
+#Log Setting
+Log = logfile.log
+
+Interface_Type = MIPv6 //GTP
+
+#Statistics Report Server
+API_SERVER = 127.0.0.1:8080

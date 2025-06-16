@@ -19,7 +19,7 @@ pub fn print_hex(buffer: &[u8], length: usize) {
         } else {
             let mut buf = String::new();
             let mut p = String::new();
-            let _j = i;
+            // let _j = i;
             let mut k = 0;
 
             for j in i..length {
@@ -45,6 +45,6 @@ pub fn print_hex(buffer: &[u8], length: usize) {
         }
     }
 
-    info!(""); // 마지막 줄 바꿈
+    info!("");
 }
 

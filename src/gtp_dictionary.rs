@@ -67,7 +67,7 @@ lazy_static::lazy_static! {
         Arc::new(RwLock::new(vec![]));
 }
 
-
+#[allow(dead_code)]
 pub async fn print_dictionary () {
     info!("{:#?}",GTP_DICTIONARY.read().await.clone());
 }

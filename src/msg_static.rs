@@ -69,6 +69,11 @@ pub async fn update_message_stats (message_type: u8, success: bool, error: u8) {
     });
 }
 
+async fn clear_message_stats() {
+    let mut msg = MSG_STAT.lock().await;
+    msg.clear();
+}
+
 fn update_cpu_stats(cpu_data: &mut Vec<CpuStats>, usage: f32) {
     cpu_data.push(CpuStats {
         usage,
@@ -142,6 +147,7 @@ pub async fn report_stats(client: &Client, url: &str)
 
             cpu_data.clear();
             mem_data.clear();
+            clear_message_stats().await;
         }
     }
 

@@ -92,9 +92,9 @@ fn _enc_mccmnc(s: &[u8], n: usize, r: &mut Vec<u8>)
 
 
 pub fn gtpv2_add_ie_tv1<'a>( msg: &'a mut [u8;1024],
-    ie_type: u8, instance: u8, value: u8, len: usize)
+    ie_type: u8, instance: u8, value: u8)
 -> usize {
-    let mut pos:usize = len;
+    let mut pos: usize = 0;
 
     //IE Type: 1byte
     msg[pos] = ie_type;
@@ -117,9 +117,9 @@ pub fn gtpv2_add_ie_tv1<'a>( msg: &'a mut [u8;1024],
 
 
 pub fn gtpv2_add_ie_tv2<'a>( msg: &'a mut [u8; 1024],
-ie_type: u8, instance: u8, value: u16, len: usize)
+    ie_type: u8, instance: u8, value: u16)
 -> usize {
-    let mut pos: usize = len;
+    let mut pos: usize = 0;
 
     // IE Type: 1 byte
     msg[pos] = ie_type;

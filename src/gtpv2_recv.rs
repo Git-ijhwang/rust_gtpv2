@@ -1080,7 +1080,7 @@ pub async fn recv_task(socket: UdpSocket) {
             Ok((nbyte, addr)) => {
                 info!("Receive GTP MESSAGE");
                 if let SocketAddr::V4(addr) = addr {
-                    // let sin_addr = addr.ip();
+                    // let mut sin_addr = addr.ip();
                     let sin_port = addr.port();
 
                     /* Only for TEST */

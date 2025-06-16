@@ -1,9 +1,9 @@
 /target
 config_peer
 src/config_peer
-config
 GTPv2-Dictionary*
 src/GTPv2_Dictionary*
 
 logs
 *copy.rs
+*.json

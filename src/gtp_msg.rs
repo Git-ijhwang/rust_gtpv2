@@ -285,7 +285,7 @@ fn gtp_send_create_session_response (session:Arc<Mutex<Session>>)
 
     //IE EBI
     let ebi = locked_session.pdn[ locked_session.pdn.len()-1 ].lbi;
-    total_len = gtpv2_add_ie_tv1( &mut buffer, GTPV2C_IE_EBI, 0, ebi, total_len);
+    total_len = gtpv2_add_ie_tv1( &mut buffer, GTPV2C_IE_EBI, 0, ebi);//, total_len);
 
     //IE BEARER Context
     //IE Recovery
@@ -318,7 +318,7 @@ pub async fn gtp_send_modify_bearer_response (
     total_len += gtpv2_add_ie_tbcd(&mut buffer, GTPV2C_IE_MSISDN, 0, msisdn_value);
 
     //IE LBI
-    total_len = gtpv2_add_ie_tv1( &mut buffer, GTPV2C_IE_EBI, 0, lbi, total_len);
+    total_len = gtpv2_add_ie_tv1( &mut buffer, GTPV2C_IE_EBI, 0, lbi);//, total_len);
 
     //IE APN Restriction
     //IE PCO
@@ -381,7 +381,7 @@ gtp_send_echo_request (peer:&mut Peer)
 {
     let mut buffer:[u8;1024] = [0u8;1024];
     // create_ie(&mut buffer, GTPV2C_IE_RECOVERY, 0);
-    let total_len = gtpv2_add_ie_tv1(&mut buffer, GTPV2C_IE_RECOVERY, 0, 0, 1);
+    let total_len = gtpv2_add_ie_tv1(&mut buffer, GTPV2C_IE_RECOVERY, 0, 0);//, 1);
 
     let buf;
     match build_gtpv2_message_without_session( &buffer, GTPV2C_ECHO_REQ, peer.tseq, total_len as u8).await {
@@ -399,7 +399,7 @@ gtp_send_echo_response (peer: &mut Peer, restart_count: u8)
 {
     let mut buffer:[u8;1024] = [0u8;1024];
     // create_ie(&mut buffer, GTPV2C_IE_RECOVERY, 0);
-    let total_len = gtpv2_add_ie_tv1(&mut buffer, GTPV2C_IE_RECOVERY, 0, restart_count, 1);
+    let total_len = gtpv2_add_ie_tv1(&mut buffer, GTPV2C_IE_RECOVERY, 0, restart_count);//, 1);
 
     let buf;
     match build_gtpv2_message_without_session(&buffer, GTPV2C_ECHO_RSP,

@@ -148,6 +148,7 @@ async fn main() -> Result<(), Error>
 
 			if let Some(addr) = config.get("API_SERVER").clone() {
 				// run_mmc_communication(addr.as_str()).await;
+                //url format: "127.0.0.1::8080"
 				if let Err(e) = report_stats(&client.clone(), addr.as_str()).await {
 					// report_stats(&client, addr.as_str()).await;
 					eprintln!("Error reporting stats: {}", e);
